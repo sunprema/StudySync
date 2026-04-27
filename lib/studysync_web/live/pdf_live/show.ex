@@ -9,7 +9,7 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   require Ash.Query
 
-  def mount(%{"workspace_id" => workspace_id, "id" => id}, _session, socket) do
+  def mount(%{"workspace_id" => workspace_id, "id" => id} = params, _session, socket) do
     actor = socket.assigns.current_user
 
     case Library.get_resource(id, actor: actor, load: [:uploaded_by]) do
@@ -28,34 +28,79 @@ defmodule StudysyncWeb.PdfLive.Show do
 
         if connected?(socket), do: AnnotationsPubSub.subscribe(resource.id)
 
-        {:ok,
-         socket
-         |> assign(:resource, resource)
-         |> assign(:workspace_id, workspace_id)
-         |> assign(:file_url, ~p"/resources/#{resource.id}/file")
-         |> assign(:page_title, resource.title)
-         |> assign(:annotations, annotations)
-         |> assign(:focal_page, 1)
-         |> assign(:selection, nil)
-         |> assign(:annotation_form, nil)
-         |> assign(:annotation_form_type, nil)
-         |> assign(:active_annotation_id, nil)
-         |> assign(:expanded_thread_id, nil)
-         |> assign(:thread_replies, [])
-         |> assign(:reply_form, nil)
-         |> assign(:filter_type, :all)
-         |> assign(:milestones, milestones)
-         |> assign(:is_admin?, is_admin?)
-         |> assign(:total_readers, total_readers)
-         |> assign(:milestone_mode, false)
-         |> assign(:milestone_form, nil)
-         |> assign(:milestone_pending_placement, nil)}
+        # Activity-feed deep links: `?annotation=<id>` focuses the annotation
+        # (and snaps focal_page to its page); `?page=<n>` is a softer fallback
+        # for events without an annotation (e.g. stamps). The Svelte canvas
+        # reacts to `active_annotation_id` to scroll the source page into view.
+        {initial_active_id, initial_focal_page} =
+          deep_link_target(params, annotations, resource.page_count)
+
+        socket =
+          socket
+          |> assign(:resource, resource)
+          |> assign(:workspace_id, workspace_id)
+          |> assign(:file_url, ~p"/resources/#{resource.id}/file")
+          |> assign(:page_title, resource.title)
+          |> assign(:annotations, annotations)
+          |> assign(:focal_page, initial_focal_page)
+          |> assign(:selection, nil)
+          |> assign(:annotation_form, nil)
+          |> assign(:annotation_form_type, nil)
+          |> assign(:active_annotation_id, initial_active_id)
+          |> assign(:expanded_thread_id, nil)
+          |> assign(:thread_replies, [])
+          |> assign(:reply_form, nil)
+          |> assign(:filter_type, :all)
+          |> assign(:milestones, milestones)
+          |> assign(:is_admin?, is_admin?)
+          |> assign(:total_readers, total_readers)
+          |> assign(:milestone_mode, false)
+          |> assign(:milestone_form, nil)
+          |> assign(:milestone_pending_placement, nil)
+
+        socket =
+          if initial_active_id do
+            push_event(socket, "scroll_to_margin_note", %{id: initial_active_id})
+          else
+            socket
+          end
+
+        {:ok, socket}
 
       _ ->
         {:ok,
          socket
          |> put_flash(:error, "Resource not found.")
          |> push_navigate(to: ~p"/workspaces/#{workspace_id}/library")}
+    end
+  end
+
+  # Resolve `?annotation=<id>` against the loaded list (drops silently if the
+  # actor can't see it) or `?page=<n>` (clamped to the book's page count).
+  # Returns `{active_annotation_id, focal_page}`.
+  defp deep_link_target(params, annotations, page_count) do
+    case Map.get(params, "annotation") do
+      id when is_binary(id) and id != "" ->
+        case Enum.find(annotations, &(&1.id == id)) do
+          %{page_number: page} -> {id, page}
+          _ -> {nil, fallback_focal_page(params, page_count)}
+        end
+
+      _ ->
+        {nil, fallback_focal_page(params, page_count)}
+    end
+  end
+
+  defp fallback_focal_page(params, page_count) do
+    case Map.get(params, "page") do
+      p when is_binary(p) and p != "" ->
+        case Integer.parse(p) do
+          {n, _} -> n |> max(1) |> min(max(page_count, 1))
+          :error -> 1
+        end
+
+      _ ->
+        1
     end
   end
 

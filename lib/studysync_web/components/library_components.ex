@@ -8,6 +8,11 @@ defmodule StudysyncWeb.LibraryComponents do
   """
   use Phoenix.Component
 
+  use Phoenix.VerifiedRoutes,
+    endpoint: StudysyncWeb.Endpoint,
+    router: StudysyncWeb.Router,
+    statics: StudysyncWeb.static_paths()
+
   alias Phoenix.LiveView.JS
 
   attr :resource, :map, required: true
@@ -263,10 +268,13 @@ defmodule StudysyncWeb.LibraryComponents do
   Single row in the workspace's Recent activity rail (Slice 8).
 
   Avatar (initials), action verb in mono caps, italic snippet, then a mono
-  caps footer with the page number and a relative timestamp. The whole row
-  is a link to the source resource so a reader can jump straight to it.
+  caps footer with the page number and a relative timestamp. When the event
+  carries a `resource_id`, the whole row is a `<.link navigate>` to the
+  reader; an `annotation_id`, when present, is forwarded as a query param so
+  the reader can focus and scroll to that annotation on mount.
   """
   attr :event, :map, required: true
+  attr :workspace_id, :string, required: true
   attr :now, :any, default: nil
 
   def activity_item(assigns) do
@@ -276,37 +284,76 @@ defmodule StudysyncWeb.LibraryComponents do
         else: Phoenix.Component.assign(assigns, :now, DateTime.utc_now())
 
     ~H"""
-    <article id={"activity-#{@event.id}"} class="flex gap-3 py-3 border-b border-paper-2/60">
-      <div
-        aria-hidden="true"
-        class="shrink-0 w-7 h-7 rounded-full bg-paper-2 text-ink-soft flex items-center justify-center font-mono text-[10px] uppercase tracking-widest"
-      >
-        {activity_initials(@event.actor_email)}
-      </div>
+    <.link
+      :if={@event.resource_id}
+      id={"activity-#{@event.id}"}
+      navigate={activity_link(@workspace_id, @event)}
+      class="flex gap-3 py-3 border-b border-paper-2/60 hover:bg-paper/40 transition-colors cursor-pointer"
+    >
+      <.activity_item_body event={@event} now={@now} />
+    </.link>
 
-      <div class="min-w-0 flex-1">
-        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft truncate">
-          <span>{@event.actor_email || "unknown"}</span>
-          <span> · </span>
-          <span class="text-terracotta">{action_label(@event.type)}</span>
-        </p>
-
-        <p :if={@event.snippet} class="font-serif italic text-ink text-sm mt-1 line-clamp-2">
-          “{@event.snippet}”
-        </p>
-
-        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-2 truncate">
-          <span :if={@event.resource_title}>{@event.resource_title}</span>
-          <span :if={@event.page_number}>
-            <span :if={@event.resource_title}> · </span>
-            P. <span class="num">{@event.page_number}</span>
-          </span>
-          <span> · </span>
-          <span>{relative_time(@event.inserted_at, @now)}</span>
-        </p>
-      </div>
+    <article
+      :if={!@event.resource_id}
+      id={"activity-#{@event.id}"}
+      class="flex gap-3 py-3 border-b border-paper-2/60"
+    >
+      <.activity_item_body event={@event} now={@now} />
     </article>
     """
+  end
+
+  attr :event, :map, required: true
+  attr :now, :any, required: true
+
+  defp activity_item_body(assigns) do
+    ~H"""
+    <div
+      aria-hidden="true"
+      class="shrink-0 w-7 h-7 rounded-full bg-paper-2 text-ink-soft flex items-center justify-center font-mono text-[10px] uppercase tracking-widest"
+    >
+      {activity_initials(@event.actor_email)}
+    </div>
+
+    <div class="min-w-0 flex-1">
+      <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft truncate">
+        <span>{@event.actor_email || "unknown"}</span>
+        <span> · </span>
+        <span class="text-terracotta">{action_label(@event.type)}</span>
+      </p>
+
+      <p :if={@event.snippet} class="font-serif italic text-ink text-sm mt-1 line-clamp-2">
+        “{@event.snippet}”
+      </p>
+
+      <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-2 truncate">
+        <span :if={@event.resource_title}>{@event.resource_title}</span>
+        <span :if={@event.page_number}>
+          <span :if={@event.resource_title}> · </span>
+          P. <span class="num">{@event.page_number}</span>
+        </span>
+        <span> · </span>
+        <span>{relative_time(@event.inserted_at, @now)}</span>
+      </p>
+    </div>
+    """
+  end
+
+  # Deep-link target: prefer focusing the source annotation; fall back to a
+  # plain page anchor for stamp events (no annotation), and finally the bare
+  # reader URL when even page is missing.
+  defp activity_link(workspace_id, %{resource_id: resource_id, annotation_id: annotation_id})
+       when not is_nil(annotation_id) do
+    ~p"/workspaces/#{workspace_id}/library/#{resource_id}?annotation=#{annotation_id}"
+  end
+
+  defp activity_link(workspace_id, %{resource_id: resource_id, page_number: page})
+       when not is_nil(page) do
+    ~p"/workspaces/#{workspace_id}/library/#{resource_id}?page=#{page}"
+  end
+
+  defp activity_link(workspace_id, %{resource_id: resource_id}) do
+    ~p"/workspaces/#{workspace_id}/library/#{resource_id}"
   end
 
   defp action_label(:highlighted), do: "highlighted"

@@ -246,7 +246,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
             </p>
 
             <div :for={{dom_id, event} <- @streams.activity_events} id={dom_id}>
-              <.activity_item event={event} />
+              <.activity_item event={event} workspace_id={@workspace.id} />
             </div>
           </div>
         </div>

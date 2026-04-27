@@ -19,6 +19,7 @@ defmodule Studysync.Activity.Event do
           actor_email: String.t() | nil,
           resource_id: Ash.UUID.t() | nil,
           resource_title: String.t() | nil,
+          annotation_id: Ash.UUID.t() | nil,
           page_number: integer() | nil,
           snippet: String.t() | nil,
           inserted_at: DateTime.t()
@@ -30,6 +31,7 @@ defmodule Studysync.Activity.Event do
     :actor_email,
     :resource_id,
     :resource_title,
+    :annotation_id,
     :page_number,
     :snippet,
     :inserted_at

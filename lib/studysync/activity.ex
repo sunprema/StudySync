@@ -162,6 +162,7 @@ defmodule Studysync.Activity do
       actor_email: email(annotation.user),
       resource_id: annotation.resource_id,
       resource_title: resource && resource.title,
+      annotation_id: annotation.id,
       page_number: annotation.page_number,
       snippet: annotation.text,
       inserted_at: annotation.inserted_at
@@ -179,6 +180,7 @@ defmodule Studysync.Activity do
       actor_email: email(reply.user),
       resource_id: resource_id,
       resource_title: resource && resource.title,
+      annotation_id: reply.annotation_id,
       page_number: annotation && annotation.page_number,
       snippet: reply.body,
       inserted_at: reply.inserted_at
@@ -192,6 +194,7 @@ defmodule Studysync.Activity do
       actor_email: email(stamp.user),
       resource_id: resource.id,
       resource_title: resource.title,
+      annotation_id: nil,
       page_number: milestone.page_number,
       snippet: milestone.label,
       inserted_at: stamp.inserted_at
