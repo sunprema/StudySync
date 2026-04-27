@@ -45,6 +45,7 @@ Users can sign in, create a workspace, and invite members. No PDFs yet.
 - [x] **1.8** LiveView: invite member by email (creates pending membership)
 - [x] **1.8a** Email invitation: sender, signed-token URL, `/invites/:token` accept LiveView (existing-user path)
 - [x] **1.8b** Signup-time claim: registering with an `invite_email` attaches `user_id` so `/invites/:token` resolves
+- [x] **1.8c** Idempotent invites: re-inviting a pending email re-fires the link via `:resend_invite`; re-inviting an active member returns `{:error, :already_member}`
 - [x] **1.9** Tests: workspace creation, membership creation, policy enforcement
 
 ---

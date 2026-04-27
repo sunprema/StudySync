@@ -30,9 +30,7 @@ defmodule Studysync.Workspaces.Membership.Changes.SendInviteEmail do
         end
       else
         :no_recipient ->
-          Logger.error(
-            "[invite] could not resolve recipient for membership=#{membership.id}"
-          )
+          Logger.error("[invite] could not resolve recipient for membership=#{membership.id}")
 
         :no_workspace ->
           Logger.error("[invite] could not load workspace #{membership.workspace_id}")
