@@ -65,6 +65,8 @@ This is the only API surface between the two worlds. Keep it small and stable.
 
 **Props (LiveView → Svelte):**
 
+- `file_url` — auth-gated URL the canvas fetches the PDF from (added Slice 3)
+- `total_pages` — page count from the persisted resource, used for the indicator before PDF.js finishes loading (added Slice 3)
 - `annotations[]`
 - `milestone_markers[]`
 - `rubber_stamps[]`

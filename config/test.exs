@@ -2,6 +2,10 @@ import Config
 config :studysync, Oban, testing: :manual
 config :studysync, token_signing_secret: "i/PlCz3iF+lY8VqLUjXkrUbaNZ5Ae0EH"
 
+# Skip SSR in tests — there's no Vite/Node runtime to render Svelte
+# components server-side, and the test harness only inspects rendered HTML.
+config :live_svelte, ssr: false
+
 config :studysync,
   storage_adapter: Studysync.Library.Storage.Local,
   storage_path: Path.join(System.tmp_dir!(), "studysync-test-uploads")

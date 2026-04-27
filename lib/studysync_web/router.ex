@@ -32,7 +32,10 @@ defmodule StudysyncWeb.Router do
       live "/workspaces/new", WorkspaceLive.New, :new
       live "/workspaces/:id", WorkspaceLive.Show, :show
       live "/workspaces/:id/library", WorkspaceLive.Library, :library
+      live "/workspaces/:workspace_id/library/:id", PdfLive.Show, :show
     end
+
+    get "/resources/:id/file", ResourceFileController, :show
   end
 
   scope "/", StudysyncWeb do

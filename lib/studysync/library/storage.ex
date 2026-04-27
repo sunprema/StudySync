@@ -15,10 +15,12 @@ defmodule Studysync.Library.Storage do
   @callback put(content :: binary, key :: String.t()) :: {:ok, String.t()} | {:error, term}
   @callback url(key :: String.t()) :: String.t()
   @callback delete(key :: String.t()) :: :ok | {:error, term}
+  @callback read(key :: String.t()) :: {:ok, binary} | {:error, term}
 
   def put(content, key), do: adapter().put(content, key)
   def url(key), do: adapter().url(key)
   def delete(key), do: adapter().delete(key)
+  def read(key), do: adapter().read(key)
 
   defp adapter do
     Application.fetch_env!(:studysync, :storage_adapter)

@@ -141,10 +141,15 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
           </p>
 
           <div :for={{dom_id, resource} <- @streams.resources} id={dom_id}>
-            <.resource_card
-              resource={resource}
-              uploader_email={uploader_email(resource)}
-            />
+            <.link
+              navigate={~p"/workspaces/#{@workspace.id}/library/#{resource.id}"}
+              class="block hover:bg-paper-2/40 transition-colors"
+            >
+              <.resource_card
+                resource={resource}
+                uploader_email={uploader_email(resource)}
+              />
+            </.link>
           </div>
         </div>
       </section>

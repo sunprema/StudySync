@@ -66,15 +66,15 @@ A workspace member can upload a PDF and see it in a workspace library list. No r
 
 A user can click a resource and land on a reader screen with the three-column layout from the design (chapter rail · page · margin). The PDF actually renders. No annotations yet.
 
-- [ ] **3.1** Phoenix component: `<.chapter_rail>` (left, vertical mono labels). Static for now.
-- [ ] **3.2** LiveView: `StudySyncWeb.PdfLive.Show` with three-column layout
-- [ ] **3.3** Svelte component: `PdfCanvasRenderer` skeleton — receives `file_url` prop, renders via PDF.js
-- [ ] **3.4** Live Svelte hook wiring; verify PDF renders and scrolls
-- [ ] **3.5** Page virtualization in `PdfCanvasRenderer` — only render pages near viewport
-- [ ] **3.6** Page number indicator in the header (mono, small caps)
-- [ ] **3.7** Margin column placeholder (`--paper-2` background, "MARGIN · 0 NOTES" header)
+- [x] **3.1** Phoenix component: `<.chapter_rail>` (left, vertical mono labels). Static for now.
+- [x] **3.2** LiveView: `StudySyncWeb.PdfLive.Show` with three-column layout
+- [x] **3.3** Svelte component: `PdfCanvasRenderer` skeleton — receives `file_url` prop, renders via PDF.js
+- [x] **3.4** Live Svelte hook wiring; verify PDF renders and scrolls
+- [x] **3.5** Page virtualization in `PdfCanvasRenderer` — only render pages near viewport
+- [x] **3.6** Page number indicator in the header (mono, small caps)
+- [x] **3.7** Margin column placeholder (`--paper-2` background, "MARGIN · 0 NOTES" header)
 - [ ] **3.8** Manual verification: 100+ page PDF scrolls smoothly
-- [ ] **3.9** Tests: LiveView mount, asserts PDF.js mount target is rendered
+- [x] **3.9** Tests: LiveView mount, asserts PDF.js mount target is rendered
 
 ---
 
@@ -299,5 +299,6 @@ When a slice closes (all items checked), append a one-line entry here:
 - Slice 0 — Foundations — closed 2026-04-26
 - Slice 1 — Identity & Workspaces — closed 2026-04-26
 - Slice 2 — Resources (PDF upload & storage) — closed 2026-04-26
+- Slice 3 — PDF Reader Shell — code-complete 2026-04-26 (3.8 manual scroll verification pending — needs server restart)
 - ...
 ```

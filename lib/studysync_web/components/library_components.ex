@@ -29,4 +29,35 @@ defmodule StudysyncWeb.LibraryComponents do
   end
 
   defp format_date(datetime), do: Calendar.strftime(datetime, "%b %d, %Y")
+
+  @doc """
+  Static chapter rail — left vertical column with chapter labels, mono caps.
+
+  Slice 3 ships the layout shell; chapters are illustrative until the
+  resource gains a real outline (later slice).
+  """
+  attr :chapters, :list, default: []
+
+  def chapter_rail(assigns) do
+    assigns =
+      if assigns.chapters == [] do
+        Phoenix.Component.assign(assigns, :chapters, ["I", "II", "III", "IV", "V"])
+      else
+        assigns
+      end
+
+    ~H"""
+    <nav
+      aria-label="Chapters"
+      class="hidden md:flex w-10 shrink-0 flex-col items-center pt-12 gap-8 border-r border-paper-2 text-ink-soft"
+    >
+      <span
+        :for={label <- @chapters}
+        class="font-mono text-[10px] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180"
+      >
+        {label}
+      </span>
+    </nav>
+    """
+  end
 end

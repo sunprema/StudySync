@@ -31,6 +31,11 @@ defmodule Studysync.Library.Storage.Local do
     end
   end
 
+  @impl true
+  def read(key) when is_binary(key) do
+    File.read(absolute_path(key))
+  end
+
   defp absolute_path(key) do
     Path.join([base_path(), key])
   end
