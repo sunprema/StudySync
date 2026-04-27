@@ -32,12 +32,15 @@ defmodule StudysyncWeb.WorkspaceLive.Show do
           <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">Workspace</p>
           <h1 class="font-display text-5xl text-ink mt-1">{@workspace.name}</h1>
         </div>
-        <.link
-          navigate={~p"/workspaces/#{@workspace.id}/library"}
-          class="font-mono text-xs uppercase tracking-widest text-ink-soft hover:text-terracotta"
-        >
-          Library →
-        </.link>
+        <div class="flex items-center gap-4">
+          <.link
+            navigate={~p"/workspaces/#{@workspace.id}/library"}
+            class="font-mono text-xs uppercase tracking-widest text-ink-soft hover:text-terracotta"
+          >
+            Library →
+          </.link>
+          <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
+        </div>
       </header>
 
       <section class="mb-12">

@@ -146,6 +146,8 @@ Quiet, literary, warm. Generous whitespace. No drop shadows on flat surfaces. No
 
 The user has explicitly rejected dark/industrial aesthetics for this product. Don't drift toward it.
 
+**Themes.** The app ships two themes — `study_sync_default` (the warm Margin Notes palette, default) and `nord` (an opt-in alternate). The active theme is persisted on `Studysync.Accounts.User.theme` and applied via `data-theme` on `<html>`; users switch themes from the avatar dropdown rendered by `<StudysyncWeb.Layouts.user_menu>`. Nord is implemented in `assets/css/app.css` as a `[data-theme="nord"]` block that overrides the raw palette tokens (`--color-paper`, `--color-ink`, `--color-terracotta`, etc.) — every existing `bg-paper` / `text-ink` / `text-terracotta` utility flips automatically. Highlight tints (peach/mint/lavender/butter) intentionally do **not** flip — they encode annotation type, not theme. New themes follow the same pattern: register a DaisyUI block, override the palette tokens, and add the key to the User attribute's regex constraint. Don't add themes that contradict the literary/warm direction above (e.g. synthwave, cyberpunk) — Nord is the carve-out, not a precedent for industrial styles.
+
 ### 5.5 Phoenix components
 
 Build these as `~H` function components in `lib/study_sync_web/components/`:

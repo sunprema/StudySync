@@ -16,14 +16,17 @@ defmodule StudysyncWeb.WorkspaceLive.Index do
   def render(assigns) do
     ~H"""
     <div class="mx-auto max-w-3xl px-8 py-12">
-      <header class="flex items-baseline justify-between border-b border-paper-2 pb-6 mb-10">
+      <header class="flex items-baseline justify-between border-b border-paper-2 pb-6 mb-10 gap-4">
         <div>
           <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">Library</p>
           <h1 class="font-display text-5xl text-ink mt-1">Workspaces</h1>
         </div>
-        <.link navigate={~p"/workspaces/new"} class="btn btn-primary">
-          New workspace
-        </.link>
+        <div class="flex items-center gap-4">
+          <.link navigate={~p"/workspaces/new"} class="btn btn-primary">
+            New workspace
+          </.link>
+          <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
+        </div>
       </header>
 
       <p :if={@workspaces == []} class="font-serif italic text-ink-soft">

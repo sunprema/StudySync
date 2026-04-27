@@ -173,6 +173,8 @@ defmodule StudysyncWeb.PdfLive.Show do
             <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft num">
               <span class="num">{@resource.page_count}</span> pages
             </p>
+
+            <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
           </div>
         </header>
 

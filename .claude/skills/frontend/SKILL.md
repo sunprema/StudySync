@@ -16,3 +16,8 @@ description: "Use this skill working with frontend when developing HTML on live 
 - Use LiveSvelte if the components requires client state and better user interactions.
 - WE are using Svelte 5. Make sure you adhere to Svelte 5 syntax.
 - Use Svelte MCP server if you have any questions on using Svelte 5
+
+## CSS / Styling
+
+- This project uses DaisyUI + Tailwind. Before introducing custom class names, check that they don't collide with DaisyUI component classes (e.g., `hero`, `steps`, `card`).
+- When integrating standalone HTML/landing pages, use a dedicated layout to avoid Tailwind Preflight squeezing content width.

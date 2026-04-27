@@ -116,6 +116,135 @@ defmodule StudysyncWeb.Layouts do
   end
 
   @doc """
+  Resolves the active theme key from layout assigns.
+
+  Falls back to "study_sync_default" when there is no signed-in user (e.g.
+  the landing page, sign-in screen) or when the attribute is absent.
+  """
+  def user_theme(%{current_user: %{theme: theme}}) when is_binary(theme), do: theme
+  def user_theme(_), do: "study_sync_default"
+
+  @doc """
+  Avatar + settings dropdown for an authenticated user. Click the avatar to
+  open a menu with the theme picker and sign-out link.
+
+  Theme changes apply optimistically in the browser via the `Theme` JS hook
+  (sets `data-theme` on `<html>` immediately) and are persisted via the
+  `Studysync.Accounts.update_theme/2` action triggered by the LiveView
+  attached to whichever page rendered the menu.
+  """
+  attr :current_user, :map, required: true
+  attr :class, :string, default: nil
+
+  def user_menu(assigns) do
+    ~H"""
+    <div
+      id="user-menu"
+      phx-hook="Theme"
+      data-theme-key={user_theme(%{current_user: @current_user})}
+      class={["relative", @class]}
+    >
+      <details class="group">
+        <summary
+          aria-label="Open settings menu"
+          class={[
+            "list-none cursor-pointer select-none",
+            "w-9 h-9 rounded-full flex items-center justify-center",
+            "bg-paper-2 text-ink-soft border border-paper-2",
+            "font-mono text-[11px] uppercase tracking-widest",
+            "hover:border-terracotta hover:text-terracotta transition-colors"
+          ]}
+        >
+          {avatar_initials(@current_user.email)}
+        </summary>
+
+        <div
+          role="menu"
+          class={[
+            "absolute right-0 mt-2 w-64 z-50",
+            "bg-paper border border-paper-2 shadow-sm rounded-sm",
+            "p-4 space-y-4"
+          ]}
+        >
+          <div>
+            <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+              Signed in as
+            </p>
+            <p class="font-serif text-ink text-sm truncate mt-1">{@current_user.email}</p>
+          </div>
+
+          <div>
+            <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mb-2">
+              Theme
+            </p>
+
+            <div class="grid grid-cols-2 gap-2">
+              <.theme_option
+                value="study_sync_default"
+                label="Margin Notes"
+                active={user_theme(%{current_user: @current_user}) == "study_sync_default"}
+              />
+              <.theme_option
+                value="nord"
+                label="Nord"
+                active={user_theme(%{current_user: @current_user}) == "nord"}
+              />
+            </div>
+          </div>
+
+          <div class="border-t border-paper-2 pt-3">
+            <.link
+              href={~p"/sign-out"}
+              method="get"
+              class="font-mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-terracotta transition-colors"
+            >
+              Sign out
+            </.link>
+          </div>
+        </div>
+      </details>
+    </div>
+    """
+  end
+
+  attr :value, :string, required: true
+  attr :label, :string, required: true
+  attr :active, :boolean, default: false
+
+  defp theme_option(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="set_theme"
+      phx-value-theme={@value}
+      aria-pressed={to_string(@active)}
+      class={[
+        "px-3 py-2 text-left rounded-sm border transition-colors cursor-pointer",
+        if(@active,
+          do: "border-terracotta text-terracotta bg-paper",
+          else: "border-paper-2 text-ink-soft hover:border-terracotta hover:text-terracotta"
+        )
+      ]}
+    >
+      <span class="font-mono text-[10px] uppercase tracking-widest block">
+        {@label}
+      </span>
+    </button>
+    """
+  end
+
+  defp avatar_initials(nil), do: "·"
+
+  defp avatar_initials(email) do
+    email
+    |> to_string()
+    |> String.split("@", parts: 2)
+    |> List.first()
+    |> String.slice(0, 2)
+    |> String.upcase()
+  end
+
+  @doc """
   Provides dark vs light theme toggle based on themes defined in app.css.
 
   See <head> in root.html.heex which applies the theme before page load.

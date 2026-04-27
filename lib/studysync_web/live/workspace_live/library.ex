@@ -76,14 +76,17 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
     <div class="flex min-h-screen w-full bg-paper text-ink">
       <main class="flex-1 min-w-0 px-8 py-12">
         <div class="mx-auto max-w-4xl">
-          <header class="border-b border-paper-2 pb-6 mb-10">
-            <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">
-              <.link navigate={~p"/workspaces/#{@workspace.id}"} class="hover:text-terracotta">
-                {@workspace.name}
-              </.link>
-              <span> · Library</span>
-            </p>
-            <h1 class="font-display text-5xl text-ink mt-1">Library</h1>
+          <header class="border-b border-paper-2 pb-6 mb-10 flex items-baseline justify-between gap-4">
+            <div>
+              <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">
+                <.link navigate={~p"/workspaces/#{@workspace.id}"} class="hover:text-terracotta">
+                  {@workspace.name}
+                </.link>
+                <span> · Library</span>
+              </p>
+              <h1 class="font-display text-5xl text-ink mt-1">Library</h1>
+            </div>
+            <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
           </header>
 
           <section class="mb-12">

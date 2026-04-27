@@ -234,6 +234,12 @@ defmodule Studysync.Accounts.User do
       change AshAuthentication.GenerateTokenChange
     end
 
+    update :update_theme do
+      description "Update the signed-in user's UI theme preference."
+      accept [:theme]
+      require_atomic? false
+    end
+
     create :sign_in_with_magic_link do
       description "Sign in or register a user with magic link."
 
@@ -283,6 +289,10 @@ defmodule Studysync.Accounts.User do
     policy action_type(:read) do
       authorize_if actor_present()
     end
+
+    policy action(:update_theme) do
+      authorize_if expr(id == ^actor(:id))
+    end
   end
 
   attributes do
@@ -298,6 +308,14 @@ defmodule Studysync.Accounts.User do
     end
 
     attribute :confirmed_at, :utc_datetime_usec
+
+    attribute :theme, :string do
+      description "UI theme key — one of \"study_sync_default\" | \"nord\"."
+      allow_nil? false
+      default "study_sync_default"
+      public? true
+      constraints match: ~r/^(study_sync_default|nord)$/
+    end
   end
 
   identities do

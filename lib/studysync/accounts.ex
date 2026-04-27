@@ -4,6 +4,9 @@ defmodule Studysync.Accounts do
 
   resources do
     resource Studysync.Accounts.Token
-    resource Studysync.Accounts.User
+
+    resource Studysync.Accounts.User do
+      define :update_theme, action: :update_theme
+    end
   end
 end

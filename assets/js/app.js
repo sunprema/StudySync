@@ -84,11 +84,34 @@ const MarginColumn = {
   },
 }
 
+// Theme — applies the current user's theme key (read from data-theme-key on
+// mount) to <html data-theme="..."> immediately so the click-to-flip feels
+// instant. The LiveView still persists the preference via the `set_theme`
+// event; on subsequent mounts the root layout already renders the right
+// data-theme, so this hook is mostly a no-op except after a click.
+const Theme = {
+  mounted() {
+    this._apply()
+  },
+
+  updated() {
+    this._apply()
+  },
+
+  _apply() {
+    const key = this.el.dataset.themeKey
+    if (!key) return
+    if (document.documentElement.getAttribute("data-theme") !== key) {
+      document.documentElement.setAttribute("data-theme", key)
+    }
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ...getHooks(Components), MarginColumn},
+  hooks: {...colocatedHooks, ...getHooks(Components), MarginColumn, Theme},
 })
 
 // Show progress bar on live navigation and form submits
