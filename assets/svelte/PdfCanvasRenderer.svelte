@@ -16,7 +16,9 @@
   //                                     highlight and scroll-to-page on change
   //
   // Events to LiveView:
-  //   text_selected      → { text, page, rect } when the user picks "Add Comment"
+  //   text_selected      → { text, page, rect, type } when the user picks one of
+  //                        the floating menu options. `type` ∈ "comment" |
+  //                        "question" | "puzzle".
   //   annotation_clicked → { id } when the user clicks a marker in the prose
   let {
     file_url,
@@ -307,7 +309,7 @@
     pushEvent("annotation_clicked", { id });
   }
 
-  function commitSelection(e) {
+  function commitSelection(e, type) {
     // mousedown's preventDefault keeps focus on the page so the window
     // selection isn't cleared before our handler runs.
     e?.preventDefault?.();
@@ -317,6 +319,7 @@
       text: selectionMenu.text,
       page: selectionMenu.page,
       rect: selectionMenu.rect,
+      type,
     });
 
     window.getSelection()?.removeAllRanges();
@@ -412,8 +415,26 @@
       role="dialog"
       aria-label="Annotation actions"
     >
-      <button class="selection-btn" onmousedown={commitSelection}>
+      <button
+        class="selection-btn"
+        data-type="comment"
+        onmousedown={(e) => commitSelection(e, "comment")}
+      >
         + Add comment
+      </button>
+      <button
+        class="selection-btn"
+        data-type="question"
+        onmousedown={(e) => commitSelection(e, "question")}
+      >
+        + Ask question
+      </button>
+      <button
+        class="selection-btn"
+        data-type="puzzle"
+        onmousedown={(e) => commitSelection(e, "puzzle")}
+      >
+        + Create puzzle
       </button>
     </div>
   {/if}
@@ -618,6 +639,9 @@
     box-shadow: 0 2px 8px rgba(42, 37, 33, 0.08);
     padding: 0.25rem;
     border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    min-width: 12rem;
   }
 
   .selection-btn {
@@ -631,6 +655,7 @@
     padding: 0.4rem 0.75rem;
     cursor: pointer;
     border-radius: 2px;
+    text-align: left;
   }
 
   .selection-btn:hover {

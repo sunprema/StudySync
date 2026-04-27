@@ -3,7 +3,10 @@ defmodule StudysyncWeb.WorkspaceLive.LibraryTest do
 
   import Phoenix.LiveViewTest
 
+  require Ash.Query
+
   alias Studysync.Accounts
+  alias Studysync.Annotations
   alias Studysync.Library
   alias Studysync.Library.Storage
   alias Studysync.Workspaces
@@ -71,6 +74,144 @@ defmodule StudysyncWeb.WorkspaceLive.LibraryTest do
 
       assert html =~ "Calvino"
       assert html =~ ~r{>2</span>\s+pages}
+    end
+  end
+
+  describe "Recent activity rail" do
+    setup do
+      user = register_user("rail-user@example.com")
+      ws = Workspaces.create_workspace!("Calvino Society", actor: user)
+
+      resource =
+        Library.upload_resource!(
+          ws.id,
+          "Invisible Cities",
+          %{content: @minimal_pdf, filename: "calvino.pdf"},
+          actor: user
+        )
+
+      on_exit(fn -> Storage.delete(resource.file_path) end)
+
+      %{user: user, workspace: ws, resource: resource}
+    end
+
+    test "renders the Recent header with a Live badge", %{conn: conn, user: user, workspace: ws} do
+      {:ok, _view, html} = conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library")
+
+      assert html =~ "Recent"
+      assert html =~ "Live"
+      assert html =~ "Nothing yet"
+    end
+
+    test "lists existing annotations as :highlighted activity items", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: resource
+    } do
+      rect = %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05}
+
+      {:ok, _annotation} =
+        Annotations.create_comment(
+          resource.id,
+          1,
+          rect,
+          "of cities and signs",
+          "what does this mean?",
+          actor: user
+        )
+
+      {:ok, _view, html} = conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library")
+
+      assert html =~ "highlighted"
+      assert html =~ "of cities and signs"
+      assert html =~ "rail-user@example.com"
+    end
+  end
+
+  describe "Slice 9 dashboard" do
+    setup do
+      owner = register_user("dash-owner@example.com")
+      ws = Workspaces.create_workspace!("Calvino Society", actor: owner)
+
+      member = register_user("dash-member@example.com")
+      _ = Workspaces.invite_member!(ws.id, "dash-member@example.com", actor: owner)
+
+      [pending] =
+        Studysync.Workspaces.Membership
+        |> Ash.Query.filter(user_id == ^member.id)
+        |> Ash.read!(authorize?: false)
+
+      {:ok, _} = Workspaces.accept_invite(pending, actor: member)
+
+      resource =
+        Library.upload_resource!(
+          ws.id,
+          "Invisible Cities",
+          %{content: @minimal_pdf, filename: "calvino.pdf"},
+          actor: owner
+        )
+
+      on_exit(fn -> Storage.delete(resource.file_path) end)
+
+      %{owner: owner, member: member, workspace: ws, resource: resource}
+    end
+
+    test "renders the book title in display serif and the group avg badge", %{
+      conn: conn,
+      owner: owner,
+      workspace: ws,
+      resource: resource
+    } do
+      rect = %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05}
+
+      {:ok, _} =
+        Annotations.create_comment(resource.id, 2, rect, "snippet", "body", actor: owner)
+
+      {:ok, _view, html} = conn |> sign_in(owner) |> live(~p"/workspaces/#{ws.id}/library")
+
+      # Book title rendered with the display-serif treatment per the spec.
+      assert html =~ ~r{font-display[^"]*">Invisible Cities}
+      # Group avg badge — owner reached page 2 of 2 → 100%.
+      assert html =~ "Group avg"
+      assert html =~ "100%"
+      assert html =~ "Open book"
+    end
+
+    test "renders a reader card for each active workspace member", %{
+      conn: conn,
+      owner: owner,
+      workspace: ws,
+      resource: _resource
+    } do
+      {:ok, _view, html} = conn |> sign_in(owner) |> live(~p"/workspaces/#{ws.id}/library")
+
+      # Both members appear as reader cards on the dashboard.
+      assert html =~ "dash-owner@example.com"
+      assert html =~ "dash-member@example.com"
+      # Initial state — neither has annotated → both at 0%.
+      assert html =~ "Not started"
+      # Member roster label — "<span class='num'>2</span> readers".
+      assert html =~ ~r{>2</span>\s*\n?\s*readers}
+    end
+
+    test "reader cards reflect each member's individual progress", %{
+      conn: conn,
+      owner: owner,
+      member: member,
+      workspace: ws,
+      resource: resource
+    } do
+      rect = %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05}
+
+      # Owner reaches page 2 of 2 → 100%; member doesn't annotate → 0%.
+      {:ok, _} =
+        Annotations.create_comment(resource.id, 2, rect, "snippet", "body", actor: owner)
+
+      {:ok, _view, html} = conn |> sign_in(member) |> live(~p"/workspaces/#{ws.id}/library")
+
+      assert html =~ "Finished"
+      assert html =~ "Not started"
     end
   end
 

@@ -116,7 +116,8 @@ defmodule Studysync.MixProject do
          else: [github: "sunprema/live_agent", branch: "main", only: :dev]
        )},
       {:ex_aws, "~> 2.5"},
-      {:ex_aws_s3, "~> 2.5"}
+      {:ex_aws_s3, "~> 2.5"},
+      {:req_llm, "~> 1.0-rc"}
     ]
   end
 

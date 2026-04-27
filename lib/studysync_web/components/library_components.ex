@@ -74,12 +74,13 @@ defmodule StudysyncWeb.LibraryComponents do
     <article
       id={"margin-note-#{@annotation.id}"}
       data-annotation-id={@annotation.id}
+      data-annotation-type={@annotation.type}
       class={[
         "pl-4 py-3 cursor-pointer transition-colors",
         "border-l-2",
         if(@active?,
           do: "border-terracotta bg-paper/60",
-          else: "border-paper-2 hover:border-terracotta/50"
+          else: type_border_class(@annotation.type)
         )
       ]}
       phx-click={JS.push("select_annotation", value: %{id: @annotation.id})}
@@ -91,14 +92,26 @@ defmodule StudysyncWeb.LibraryComponents do
       }
       phx-mouseout={JS.dispatch("studysync:annotation-hover", to: "body", detail: %{id: nil})}
     >
-      <div class="flex items-baseline gap-2 mb-1">
+      <div class="flex items-baseline gap-2 mb-1 flex-wrap">
         <.footnote_marker number={@number} class="!text-[0.85rem]" />
+        <span
+          :if={@annotation.type != :comment}
+          class={[
+            "font-mono text-[9px] uppercase tracking-widest px-1 py-px rounded-sm border",
+            type_tag_classes(@annotation.type)
+          ]}
+        >
+          {type_tag_label(@annotation.type)}
+        </span>
         <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft truncate">
           {@author_email || "unknown"}
         </p>
       </div>
 
-      <blockquote class="font-serif italic text-ink-soft text-sm border-l border-paper-2/70 pl-2 mb-2 truncate">
+      <blockquote class={[
+        "font-serif italic text-ink-soft text-sm border-l pl-2 mb-2 truncate",
+        type_quote_border_class(@annotation.type)
+      ]}>
         “{@annotation.text}”
       </blockquote>
 
@@ -187,6 +200,29 @@ defmodule StudysyncWeb.LibraryComponents do
     """
   end
 
+  # Per-type visual treatment (Slice 10). Comments stay quiet — they're the
+  # most common type, and adding a tag to every card would muddy the rail.
+  # Questions/puzzles get a small mono-caps label and a pastel tint on the
+  # left border + snippet quote rule, mapping to the highlight tints in
+  # CLAUDE.md §5.1.
+  defp type_tag_label(:question), do: "Question"
+  defp type_tag_label(:puzzle), do: "Puzzle"
+  defp type_tag_label(:ai_response), do: "AI"
+  defp type_tag_label(_), do: "Note"
+
+  defp type_tag_classes(:question), do: "text-mint border-mint/60 bg-mint/15"
+  defp type_tag_classes(:puzzle), do: "text-lavender border-lavender/60 bg-lavender/20"
+  defp type_tag_classes(:ai_response), do: "text-terracotta border-terracotta/40"
+  defp type_tag_classes(_), do: "text-ink-soft border-paper-2"
+
+  defp type_border_class(:question), do: "border-mint/70 hover:border-mint"
+  defp type_border_class(:puzzle), do: "border-lavender/70 hover:border-lavender"
+  defp type_border_class(_), do: "border-paper-2 hover:border-terracotta/50"
+
+  defp type_quote_border_class(:question), do: "border-mint/60"
+  defp type_quote_border_class(:puzzle), do: "border-lavender/60"
+  defp type_quote_border_class(_), do: "border-paper-2/70"
+
   defp initials(_, true), do: "AI"
   defp initials(nil, _), do: "·"
 
@@ -197,6 +233,232 @@ defmodule StudysyncWeb.LibraryComponents do
     |> String.slice(0, 2)
     |> String.upcase()
   end
+
+  @doc """
+  Single row in the workspace's Recent activity rail (Slice 8).
+
+  Avatar (initials), action verb in mono caps, italic snippet, then a mono
+  caps footer with the page number and a relative timestamp. The whole row
+  is a link to the source resource so a reader can jump straight to it.
+  """
+  attr :event, :map, required: true
+  attr :now, :any, default: nil
+
+  def activity_item(assigns) do
+    assigns =
+      if assigns[:now],
+        do: assigns,
+        else: Phoenix.Component.assign(assigns, :now, DateTime.utc_now())
+
+    ~H"""
+    <article id={"activity-#{@event.id}"} class="flex gap-3 py-3 border-b border-paper-2/60">
+      <div
+        aria-hidden="true"
+        class="shrink-0 w-7 h-7 rounded-full bg-paper-2 text-ink-soft flex items-center justify-center font-mono text-[10px] uppercase tracking-widest"
+      >
+        {activity_initials(@event.actor_email)}
+      </div>
+
+      <div class="min-w-0 flex-1">
+        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft truncate">
+          <span>{@event.actor_email || "unknown"}</span>
+          <span> · </span>
+          <span class="text-terracotta">{action_label(@event.type)}</span>
+        </p>
+
+        <p :if={@event.snippet} class="font-serif italic text-ink text-sm mt-1 line-clamp-2">
+          “{@event.snippet}”
+        </p>
+
+        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-2 truncate">
+          <span :if={@event.resource_title}>{@event.resource_title}</span>
+          <span :if={@event.page_number}>
+            <span :if={@event.resource_title}> · </span>
+            P. <span class="num">{@event.page_number}</span>
+          </span>
+          <span> · </span>
+          <span>{relative_time(@event.inserted_at, @now)}</span>
+        </p>
+      </div>
+    </article>
+    """
+  end
+
+  defp action_label(:highlighted), do: "highlighted"
+  defp action_label(:commented), do: "commented"
+  defp action_label(:completed_chapter), do: "finished a chapter"
+  defp action_label(:stamped), do: "stamped"
+  defp action_label(other), do: to_string(other)
+
+  defp activity_initials(nil), do: "·"
+
+  defp activity_initials(email) do
+    email
+    |> String.split("@", parts: 2)
+    |> List.first()
+    |> String.slice(0, 2)
+    |> String.upcase()
+  end
+
+  defp relative_time(%DateTime{} = at, now) do
+    diff = DateTime.diff(now, at, :second)
+
+    cond do
+      diff < 60 -> "just now"
+      diff < 3600 -> "#{div(diff, 60)}m ago"
+      diff < 86_400 -> "#{div(diff, 3600)}h ago"
+      diff < 604_800 -> "#{div(diff, 86_400)}d ago"
+      true -> Calendar.strftime(at, "%b %d")
+    end
+  end
+
+  defp relative_time(_, _), do: ""
+
+  @doc """
+  Horizontal progress timeline with avatar pins (Slice 9).
+
+  A flat paper-2 track spans the full width. Each member is rendered as an
+  initials circle pinned to their `progress_percent` along the track. The
+  current actor's pin is bumped in size and gets a terracotta ring so a
+  reader can find themselves at a glance. Multiple members at the same
+  progress fan apart vertically rather than overlapping.
+
+  `members` is a list of maps:
+
+      %{
+        user_id: id,
+        email: "...",          # used to compute initials + label
+        progress_percent: 0..100
+      }
+  """
+  attr :members, :list, required: true
+  attr :current_user_id, :any, default: nil
+  attr :class, :string, default: nil
+
+  def progress_timeline(assigns) do
+    ~H"""
+    <div class={["w-full", @class]}>
+      <div class="relative h-12 mt-2">
+        <div class="absolute left-0 right-0 top-1/2 h-px bg-paper-2 -translate-y-1/2"></div>
+        <div
+          :for={{member, idx} <- Enum.with_index(@members)}
+          class="absolute top-1/2 -translate-y-1/2"
+          style={"left: #{member.progress_percent}%; transform: translate(-50%, calc(-50% + #{pin_offset(idx)}px));"}
+          title={"#{member.email} · #{member.progress_percent}%"}
+        >
+          <div class={[
+            "rounded-full flex items-center justify-center",
+            "font-mono uppercase tracking-widest",
+            if(@current_user_id && member.user_id == @current_user_id,
+              do: "w-8 h-8 text-[10px] bg-terracotta text-paper ring-2 ring-terracotta/30",
+              else: "w-7 h-7 text-[9px] bg-paper-2 text-ink-soft border border-paper-2"
+            )
+          ]}>
+            {member_initials(member.email)}
+          </div>
+        </div>
+
+        <span class="absolute left-0 -bottom-5 font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+          P. <span class="num">1</span>
+        </span>
+        <span class="absolute right-0 -bottom-5 font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+          End
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  defp pin_offset(idx) when rem(idx, 2) == 0, do: -8
+  defp pin_offset(_), do: 8
+
+  defp member_initials(nil), do: "·"
+
+  defp member_initials(email) do
+    email
+    |> String.split("@", parts: 2)
+    |> List.first()
+    |> String.slice(0, 2)
+    |> String.upcase()
+  end
+
+  @doc """
+  Single reader card on the workspace dashboard (Slice 9).
+
+  Avatar + email, a one-word status, percentage in tabular nums, time-spent
+  in mono caps, and a hairline progress bar. Self gets a terracotta accent
+  border on the left.
+  """
+  attr :member, :map, required: true
+  attr :is_self, :boolean, default: false
+  attr :class, :string, default: nil
+
+  def reader_card(assigns) do
+    ~H"""
+    <article class={[
+      "p-4 border bg-paper",
+      if(@is_self, do: "border-terracotta/60", else: "border-paper-2"),
+      "border-l-2",
+      if(@is_self, do: "border-l-terracotta", else: "border-l-paper-2"),
+      @class
+    ]}>
+      <div class="flex items-center gap-3">
+        <div
+          aria-hidden="true"
+          class={[
+            "shrink-0 w-9 h-9 rounded-full flex items-center justify-center",
+            "font-mono text-[11px] uppercase tracking-widest",
+            if(@is_self, do: "bg-terracotta text-paper", else: "bg-paper-2 text-ink-soft")
+          ]}
+        >
+          {member_initials(@member.email)}
+        </div>
+
+        <div class="min-w-0 flex-1">
+          <p class="font-serif text-ink truncate">{@member.email || "unknown"}</p>
+          <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+            {reader_status(@member.progress_percent)}
+          </p>
+        </div>
+
+        <p class="font-display text-2xl text-ink num shrink-0">
+          {@member.progress_percent}<span class="text-base text-ink-soft">%</span>
+        </p>
+      </div>
+
+      <div class="mt-3 h-px bg-paper-2 w-full">
+        <div
+          class="h-px bg-terracotta"
+          style={"width: #{@member.progress_percent}%;"}
+        >
+        </div>
+      </div>
+
+      <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-3">
+        {format_duration(Map.get(@member, :time_spent_seconds, 0))} on the page
+      </p>
+    </article>
+    """
+  end
+
+  defp reader_status(0), do: "Not started"
+  defp reader_status(p) when p >= 100, do: "Finished"
+  defp reader_status(p) when p >= 75, do: "Almost done"
+  defp reader_status(p) when p >= 25, do: "Reading"
+  defp reader_status(_), do: "Just started"
+
+  defp format_duration(nil), do: "—"
+  defp format_duration(seconds) when is_integer(seconds) and seconds < 60, do: "<1m"
+
+  defp format_duration(seconds) when is_integer(seconds) do
+    cond do
+      seconds < 3600 -> "#{div(seconds, 60)}m"
+      seconds < 86_400 -> "#{div(seconds, 3600)}h #{rem(div(seconds, 60), 60)}m"
+      true -> "#{div(seconds, 86_400)}d #{rem(div(seconds, 3600), 24)}h"
+    end
+  end
+
+  defp format_duration(_), do: "—"
 
   @doc """
   Static chapter rail — left vertical column with chapter labels, mono caps.

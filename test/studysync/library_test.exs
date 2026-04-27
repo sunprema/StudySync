@@ -139,4 +139,245 @@ defmodule Studysync.LibraryTest do
       assert results == []
     end
   end
+
+  describe "Slice 9 calculations" do
+    @rect %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05}
+
+    defp accept_member(workspace, owner, email) do
+      member = register_user(email)
+      _ = Studysync.Workspaces.invite_member!(workspace.id, email, actor: owner)
+
+      [pending] =
+        Studysync.Workspaces.Membership
+        |> Ash.Query.filter(user_id == ^member.id)
+        |> Ash.read!(authorize?: false)
+
+      {:ok, _} = Studysync.Workspaces.accept_invite(pending, actor: member)
+      member
+    end
+
+    setup do
+      owner = register_user("calc-owner@example.com")
+      ws = Studysync.Workspaces.create_workspace!("Calvino Society", actor: owner)
+
+      resource =
+        Library.upload_resource!(
+          ws.id,
+          "Invisible Cities",
+          %{content: @minimal_pdf, filename: "calvino.pdf"},
+          actor: owner
+        )
+
+      on_exit(fn -> Storage.delete(resource.file_path) end)
+
+      %{owner: owner, workspace: ws, resource: resource}
+    end
+
+    test "progress_percent — zero when the user has no annotations", %{
+      owner: owner,
+      resource: resource
+    } do
+      [loaded] =
+        Library.list_resources!(
+          actor: owner,
+          query: [filter: [id: resource.id]],
+          load: [progress_percent: %{user_id: owner.id}]
+        )
+
+      assert loaded.progress_percent == 0
+    end
+
+    test "progress_percent — max page / page_count, integer-truncated", %{
+      owner: owner,
+      resource: resource
+    } do
+      # page_count is 3 from @minimal_pdf. Annotating page 2 → 2/3 = 66%.
+      {:ok, _} =
+        Studysync.Annotations.create_comment(
+          resource.id,
+          1,
+          @rect,
+          "snippet",
+          "body",
+          actor: owner
+        )
+
+      {:ok, _} =
+        Studysync.Annotations.create_comment(
+          resource.id,
+          2,
+          @rect,
+          "snippet",
+          "body",
+          actor: owner
+        )
+
+      [loaded] =
+        Library.list_resources!(
+          actor: owner,
+          query: [filter: [id: resource.id]],
+          load: [progress_percent: %{user_id: owner.id}]
+        )
+
+      assert loaded.progress_percent == 66
+    end
+
+    test "progress_percent — only counts the targeted user's annotations", %{
+      owner: owner,
+      workspace: ws,
+      resource: resource
+    } do
+      member = accept_member(ws, owner, "calc-member@example.com")
+
+      {:ok, _} =
+        Studysync.Annotations.create_comment(
+          resource.id,
+          3,
+          @rect,
+          "owner-only",
+          "body",
+          actor: owner
+        )
+
+      [for_member] =
+        Library.list_resources!(
+          actor: member,
+          query: [filter: [id: resource.id]],
+          load: [progress_percent: %{user_id: member.id}]
+        )
+
+      assert for_member.progress_percent == 0
+    end
+
+    test "time_spent_seconds — zero with 0 or 1 annotation", %{
+      owner: owner,
+      resource: resource
+    } do
+      [loaded_empty] =
+        Library.list_resources!(
+          actor: owner,
+          query: [filter: [id: resource.id]],
+          load: [time_spent_seconds: %{user_id: owner.id}]
+        )
+
+      assert loaded_empty.time_spent_seconds == 0
+
+      {:ok, _} =
+        Studysync.Annotations.create_comment(
+          resource.id,
+          1,
+          @rect,
+          "single",
+          "body",
+          actor: owner
+        )
+
+      [loaded_one] =
+        Library.list_resources!(
+          actor: owner,
+          query: [filter: [id: resource.id]],
+          load: [time_spent_seconds: %{user_id: owner.id}]
+        )
+
+      assert loaded_one.time_spent_seconds == 0
+    end
+
+    test "time_spent_seconds — span between earliest and latest annotation", %{
+      owner: owner,
+      resource: resource
+    } do
+      {:ok, first} =
+        Studysync.Annotations.create_comment(
+          resource.id,
+          1,
+          @rect,
+          "first",
+          "body",
+          actor: owner
+        )
+
+      {:ok, second} =
+        Studysync.Annotations.create_comment(
+          resource.id,
+          2,
+          @rect,
+          "second",
+          "body",
+          actor: owner
+        )
+
+      expected = DateTime.diff(second.inserted_at, first.inserted_at, :second)
+
+      [loaded] =
+        Library.list_resources!(
+          actor: owner,
+          query: [filter: [id: resource.id]],
+          load: [time_spent_seconds: %{user_id: owner.id}]
+        )
+
+      assert loaded.time_spent_seconds == expected
+    end
+
+    test "avg_progress_percent — zero when no annotations exist", %{
+      owner: owner,
+      resource: resource
+    } do
+      [loaded] =
+        Library.list_resources!(
+          actor: owner,
+          query: [filter: [id: resource.id]],
+          load: [:avg_progress_percent]
+        )
+
+      assert loaded.avg_progress_percent == 0
+    end
+
+    test "avg_progress_percent — averages max page across annotators", %{
+      owner: owner,
+      workspace: ws,
+      resource: resource
+    } do
+      member = accept_member(ws, owner, "avg-member@example.com")
+
+      # owner reaches page 3, member reaches page 1.
+      # Avg max page = (3 + 1) / 2 = 2 → 2/3 = 66%.
+      {:ok, _} =
+        Studysync.Annotations.create_comment(resource.id, 3, @rect, "o", "b", actor: owner)
+
+      {:ok, _} =
+        Studysync.Annotations.create_comment(resource.id, 1, @rect, "m", "b", actor: member)
+
+      [loaded] =
+        Library.list_resources!(
+          actor: owner,
+          query: [filter: [id: resource.id]],
+          load: [:avg_progress_percent]
+        )
+
+      assert loaded.avg_progress_percent == 66
+    end
+
+    test "avg_progress_percent — non-annotators are not counted as 0%", %{
+      owner: owner,
+      workspace: ws,
+      resource: resource
+    } do
+      _silent = accept_member(ws, owner, "silent-member@example.com")
+
+      # Only owner has annotated, on page 3 of 3 → 100%.
+      # The silent member has zero engagement and shouldn't drag the avg
+      # down to 50% — that's reader-card territory, not group pace.
+      {:ok, _} =
+        Studysync.Annotations.create_comment(resource.id, 3, @rect, "o", "b", actor: owner)
+
+      [loaded] =
+        Library.list_resources!(
+          actor: owner,
+          query: [filter: [id: resource.id]],
+          load: [:avg_progress_percent]
+        )
+
+      assert loaded.avg_progress_percent == 100
+    end
+  end
 end

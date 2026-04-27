@@ -70,5 +70,25 @@ defmodule Studysync.Library.Resource do
   relationships do
     belongs_to :workspace, Studysync.Workspaces.Workspace, allow_nil?: false
     belongs_to :uploaded_by, Studysync.Accounts.User, allow_nil?: true
+
+    has_many :annotations, Studysync.Annotations.Annotation
+  end
+
+  calculations do
+    calculate :progress_percent,
+              :integer,
+              Studysync.Library.Resource.Calculations.ProgressPercent do
+      argument :user_id, :uuid, allow_nil?: false
+    end
+
+    calculate :time_spent_seconds,
+              :integer,
+              Studysync.Library.Resource.Calculations.TimeSpentSeconds do
+      argument :user_id, :uuid, allow_nil?: false
+    end
+
+    calculate :avg_progress_percent,
+              :integer,
+              Studysync.Library.Resource.Calculations.AvgProgressPercent
   end
 end

@@ -27,6 +27,13 @@
   --color-ink: #2a2521;
   --color-ink-soft: #5c5750;
 
+  /* Highlight tints (CLAUDE.md §5.1) — mapped to annotation types in
+     Slice 10: peach=comment, mint=question, lavender=puzzle, butter=ai. */
+  --color-peach: #f0c8a8;
+  --color-mint: #c2dcc6;
+  --color-lavender: #d2c8e0;
+  --color-butter: #ecdfa8;
+
   --font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   --font-sans: "Source Serif 4", Georgia, "Times New Roman", serif;

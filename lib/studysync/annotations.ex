@@ -11,6 +11,14 @@ defmodule Studysync.Annotations do
       define :create_comment,
         action: :create_comment,
         args: [:resource_id, :page_number, :rect, :text, :body]
+
+      define :create_question,
+        action: :create_question,
+        args: [:resource_id, :page_number, :rect, :text, :body]
+
+      define :create_puzzle,
+        action: :create_puzzle,
+        args: [:resource_id, :page_number, :rect, :text, :body]
     end
 
     resource Studysync.Annotations.AnnotationComment do

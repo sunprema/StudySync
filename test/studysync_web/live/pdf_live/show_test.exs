@@ -555,6 +555,185 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
     end
   end
 
+  describe "annotation types & filter chips (Slice 10)" do
+    setup %{user: user, resource: resource} do
+      rect = %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05}
+
+      {:ok, comment} =
+        Annotations.create_comment(resource.id, 1, rect, "comment-snippet", "comment body",
+          actor: user
+        )
+
+      {:ok, question} =
+        Annotations.create_question(resource.id, 2, rect, "question-snippet", "question body",
+          actor: user
+        )
+
+      {:ok, puzzle} =
+        Annotations.create_puzzle(resource.id, 3, rect, "puzzle-snippet", "puzzle body",
+          actor: user
+        )
+
+      %{comment: comment, question: question, puzzle: puzzle}
+    end
+
+    test "filter chips render with per-type counts", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, _view, html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      assert html =~ ~s(phx-value-type="all")
+      assert html =~ ~s(phx-value-type="comment")
+      assert html =~ ~s(phx-value-type="question")
+      assert html =~ ~s(phx-value-type="puzzle")
+
+      # The "All" chip is active on mount and shows the total count of 3.
+      assert Regex.match?(
+               ~r{phx-value-type="all"[^>]*aria-pressed="true"[^>]*>\s*All\s*<span[^>]*>3</span>}s,
+               html
+             )
+
+      # Each per-type chip shows its individual count of 1.
+      assert Regex.match?(
+               ~r{phx-value-type="comment"[^>]*>\s*Comments\s*<span[^>]*>1</span>}s,
+               html
+             )
+
+      assert Regex.match?(
+               ~r{phx-value-type="question"[^>]*>\s*Questions\s*<span[^>]*>1</span>}s,
+               html
+             )
+
+      assert Regex.match?(
+               ~r{phx-value-type="puzzle"[^>]*>\s*Puzzles\s*<span[^>]*>1</span>}s,
+               html
+             )
+    end
+
+    test "clicking a per-type chip narrows the visible notes", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r,
+      comment: c,
+      question: q,
+      puzzle: p
+    } do
+      {:ok, view, html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # All three are present at mount (filter = :all).
+      assert html =~ "id=\"margin-note-#{c.id}\""
+      assert html =~ "id=\"margin-note-#{q.id}\""
+      assert html =~ "id=\"margin-note-#{p.id}\""
+
+      filtered =
+        view
+        |> element(~s(button[phx-value-type="question"]))
+        |> render_click()
+
+      # Only the question card remains; the others are stream-removed.
+      assert filtered =~ "id=\"margin-note-#{q.id}\""
+      refute filtered =~ "id=\"margin-note-#{c.id}\""
+      refute filtered =~ "id=\"margin-note-#{p.id}\""
+    end
+
+    test "Margin header shows the filtered/total ratio", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, view, _} = conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      filtered =
+        view
+        |> element(~s(button[phx-value-type="puzzle"]))
+        |> render_click()
+
+      # "Margin · 1 of 3 notes" — span elements wrap the digits.
+      assert Regex.match?(
+               ~r{Margin · <span class="num">1</span>\s*of\s*<span class="num">3</span>\s*notes}s,
+               filtered
+             )
+    end
+
+    test "text_selected with type=question opens a question form and persists a question", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      open_html =
+        render_hook(view, "text_selected", %{
+          "text" => "the city of Diomira",
+          "page" => 1,
+          "rect" => %{"x" => 0.2, "y" => 0.4, "width" => 0.25, "height" => 0.04},
+          "type" => "question"
+        })
+
+      # Form header reflects the chosen type.
+      assert open_html =~ "New question · page"
+
+      view
+      |> form("#annotation-form", form: %{body: "is Diomira a city of memory?"})
+      |> render_submit()
+
+      [persisted] =
+        Annotations.list_annotations!(
+          actor: user,
+          query: [
+            filter: [resource_id: r.id, body: "is Diomira a city of memory?"]
+          ]
+        )
+
+      assert persisted.type == :question
+      assert persisted.color == "mint"
+    end
+
+    test "text_selected with type=puzzle persists a puzzle", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      render_hook(view, "text_selected", %{
+        "text" => "the bridge between Despina and Anastasia",
+        "page" => 1,
+        "rect" => %{"x" => 0.1, "y" => 0.5, "width" => 0.4, "height" => 0.04},
+        "type" => "puzzle"
+      })
+
+      view
+      |> form("#annotation-form", form: %{body: "two cities, one passage — what's the trick?"})
+      |> render_submit()
+
+      [persisted] =
+        Annotations.list_annotations!(
+          actor: user,
+          query: [
+            filter: [
+              resource_id: r.id,
+              body: "two cities, one passage — what's the trick?"
+            ]
+          ]
+        )
+
+      assert persisted.type == :puzzle
+      assert persisted.color == "lavender"
+    end
+  end
+
   describe "ResourceFileController" do
     test "members can fetch the PDF bytes", %{conn: conn, user: user, resource: r} do
       conn = conn |> sign_in(user) |> get(~p"/resources/#{r.id}/file")

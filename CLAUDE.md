@@ -74,7 +74,7 @@ This is the only API surface between the two worlds. Keep it small and stable.
 
 **Events (Svelte → LiveView):**
 
-- `text_selected` → `{ text, page, rect }`
+- `text_selected` → `{ text, page, rect, type }` — `type` ∈ `"comment" | "question" | "puzzle"` (added Slice 10)
 - `annotation_clicked` → `{ id }`
 - `apply_stamp` → `{ milestone_id }`
 

@@ -152,14 +152,18 @@ Two users in the same workspace see each other's annotations and replies appear 
 
 Right-side "Recent" rail on the library screen showing live highlights, completions, comments — matching the dashboard in the design (PDF page 3).
 
-- [ ] **8.1** Ash resource or read action: `StudySync.Activity.Event` (or computed from existing resources)
-- [ ] **8.2** Define event types: `:highlighted`, `:commented`, `:completed_chapter`, `:stamped`
-- [ ] **8.3** LiveView: `LibraryLive.Show` with workspace dashboard layout
-- [ ] **8.4** Phoenix component: `<.activity_item>` per design (avatar, action, snippet, page number, timestamp)
-- [ ] **8.5** Right rail with `Recent` header (Instrument Serif italic, "LIVE" badge in mono)
-- [ ] **8.6** PubSub subscription: rail updates in real time
-- [ ] **8.7** Streams: rail uses `phx-update="stream"` capped at N most recent items
-- [ ] **8.8** Tests: event aggregation, rail mount
+- [x] **8.1** Ash resource or read action: `StudySync.Activity.Event` (or computed from existing resources)
+  - Implemented as a plain `Studysync.Activity.Event` struct + `Studysync.Activity.list_for_workspace/2`. Events are derived on read from existing annotations and replies via Ash queries (no new table). Slices 12–13 (milestones, stamps) plug in by adding event sources without changing the call shape.
+- [x] **8.2** Define event types: `:highlighted`, `:commented`, `:completed_chapter`, `:stamped`
+  - All four type tags exist in the struct/component; only `:highlighted` (annotation creation) and `:commented` (reply creation) are emitted today. `:completed_chapter` lights up in Slice 9; `:stamped` in Slice 13.
+- [x] **8.3** LiveView: `LibraryLive.Show` with workspace dashboard layout
+  - Kept the existing `StudysyncWeb.WorkspaceLive.Library` module name (already on `/workspaces/:id/library`) rather than renaming — the spec's `LibraryLive.Show` and our module are the same screen. Renaming was out of scope per CLAUDE.md §8.2.
+- [x] **8.4** Phoenix component: `<.activity_item>` per design (avatar, action, snippet, page number, timestamp)
+- [x] **8.5** Right rail with `Recent` header (Instrument Serif italic, "LIVE" badge in mono)
+- [x] **8.6** PubSub subscription: rail updates in real time
+  - New `Studysync.Activity.PubSub` broadcasts on `"workspace:#{id}"`. Annotation/reply broadcast changes fan out on both the existing resource topic (reader) and the new workspace topic (rail).
+- [x] **8.7** Streams: rail uses `phx-update="stream"` capped at N most recent items
+- [x] **8.8** Tests: event aggregation, rail mount
 
 ---
 
@@ -167,14 +171,18 @@ Right-side "Recent" rail on the library screen showing live highlights, completi
 
 Full library screen per design page 3: book title in display serif, group progress timeline with avatar pins, reader cards grid, activity rail (from Slice 8).
 
-- [ ] **9.1** Ash calculation: per-user `progress_percent` on a resource
-- [ ] **9.2** Ash calculation: per-user `time_spent` on a resource
-- [ ] **9.3** Ash aggregate: workspace `avg_progress` per resource
-- [ ] **9.4** Phoenix component: `<.progress_timeline>` with avatar pins
-- [ ] **9.5** Phoenix component: `<.reader_card>` per design (avatar, name, status, %, time, mini progress bar)
-- [ ] **9.6** LiveView: `LibraryLive.Show` composes title, timeline, reader cards, activity rail
+- [x] **9.1** Ash calculation: per-user `progress_percent` on a resource
+- [x] **9.2** Ash calculation: per-user `time_spent` on a resource
+  - Implemented as `time_spent_seconds` returning the gap between the user's earliest and latest annotation. Until explicit page-view tracking lands (Slice 15), this is the strongest defensible signal we have for "how long has this reader been engaging with this book."
+- [x] **9.3** Ash aggregate: workspace `avg_progress` per resource
+  - Implemented as a module calculation (`avg_progress_percent`) rather than a single `:avg` aggregate, because Ash aggregates can't express avg-of-max-per-user in one declaration. Behaviour matches the spec; only annotators are counted (silent members live in the reader cards, not the group pace).
+- [x] **9.4** Phoenix component: `<.progress_timeline>` with avatar pins
+- [x] **9.5** Phoenix component: `<.reader_card>` per design (avatar, name, status, %, time, mini progress bar)
+- [x] **9.6** LiveView: `LibraryLive.Show` composes title, timeline, reader cards, activity rail
+  - Per-resource book panel: title in `font-display`, group-avg badge, timeline, reader cards grid, activity rail unchanged. The Ash calcs are canonical per-pair definitions; the LiveView builds the workspace-wide matrix in a single annotations query for efficiency.
 - [ ] **9.7** Manual verification: matches design page 3 visually
-- [ ] **9.8** Tests: calculations and aggregates return correct values
+  - Pending — needs a browser session against design PDF page 3 to confirm by eye.
+- [x] **9.8** Tests: calculations and aggregates return correct values
 
 ---
 
@@ -182,11 +190,13 @@ Full library screen per design page 3: book title in display serif, group progre
 
 Add `:question` and `:puzzle` types. Floating menu offers all three.
 
-- [ ] **10.1** Extend Ash action set: `:create_question`, `:create_puzzle` (or one `:create` with type param)
-- [ ] **10.2** Per-type color and icon in `<.margin_note>`
-- [ ] **10.3** Floating menu in Svelte shows three options: "Add Comment", "Ask Question", "Create Puzzle"
-- [ ] **10.4** Per-type filter chips above the margin column
-- [ ] **10.5** Tests: each type creates correctly, filtering works
+- [x] **10.1** Extend Ash action set: `:create_question`, `:create_puzzle` (or one `:create` with type param)
+- [x] **10.2** Per-type color and icon in `<.margin_note>`
+  - Per CLAUDE.md §5.4 the product has no emoji, so the visual marker is a small mono-caps tag (`Question` / `Puzzle`) plus a pastel left-border tint (peach/mint/lavender) — same language as the highlight tints in §5.1.
+- [x] **10.3** Floating menu in Svelte shows three options: "Add Comment", "Ask Question", "Create Puzzle"
+  - Required extending the LV↔Svelte contract: `text_selected` now carries a `type` field (`comment | question | puzzle`). CLAUDE.md §4.3 updated in the same change.
+- [x] **10.4** Per-type filter chips above the margin column
+- [x] **10.5** Tests: each type creates correctly, filtering works
 
 ---
 
@@ -306,5 +316,7 @@ When a slice closes (all items checked), append a one-line entry here:
 - Slice 4 — Text Selection & Annotation Creation — closed 2026-04-26
 - Slice 6 — Annotation Threads — closed 2026-04-26
 - Slice 7 — Real-Time Collaboration — closed 2026-04-26 (7.8 manual verification pending)
+- Slice 8 — Activity Feed — closed 2026-04-26
+- Slice 10 — Annotation Types Beyond Comment — closed 2026-04-26
 - ...
 ```

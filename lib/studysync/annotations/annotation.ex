@@ -27,6 +27,37 @@ defmodule Studysync.Annotations.Annotation do
       argument :visibility, :atom, allow_nil?: true
 
       change set_attribute(:type, :comment)
+      change set_attribute(:color, "peach")
+      change relate_actor(:user)
+      change Studysync.Annotations.Annotation.Changes.SetCommentAttributes
+      change Studysync.Annotations.Annotation.Changes.BroadcastCreated
+    end
+
+    create :create_question do
+      argument :resource_id, :uuid, allow_nil?: false
+      argument :page_number, :integer, allow_nil?: false
+      argument :rect, :map, allow_nil?: false
+      argument :text, :string, allow_nil?: false
+      argument :body, :string, allow_nil?: false
+      argument :visibility, :atom, allow_nil?: true
+
+      change set_attribute(:type, :question)
+      change set_attribute(:color, "mint")
+      change relate_actor(:user)
+      change Studysync.Annotations.Annotation.Changes.SetCommentAttributes
+      change Studysync.Annotations.Annotation.Changes.BroadcastCreated
+    end
+
+    create :create_puzzle do
+      argument :resource_id, :uuid, allow_nil?: false
+      argument :page_number, :integer, allow_nil?: false
+      argument :rect, :map, allow_nil?: false
+      argument :text, :string, allow_nil?: false
+      argument :body, :string, allow_nil?: false
+      argument :visibility, :atom, allow_nil?: true
+
+      change set_attribute(:type, :puzzle)
+      change set_attribute(:color, "lavender")
       change relate_actor(:user)
       change Studysync.Annotations.Annotation.Changes.SetCommentAttributes
       change Studysync.Annotations.Annotation.Changes.BroadcastCreated
@@ -34,7 +65,7 @@ defmodule Studysync.Annotations.Annotation do
   end
 
   policies do
-    policy action(:create_comment) do
+    policy action([:create_comment, :create_question, :create_puzzle]) do
       authorize_if Studysync.Annotations.Checks.ActorIsResourceWorkspaceMember
     end
 

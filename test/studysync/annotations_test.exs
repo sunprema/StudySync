@@ -62,6 +62,7 @@ defmodule Studysync.AnnotationsTest do
         )
 
       assert annotation.type == :comment
+      assert annotation.color == "peach"
       assert annotation.visibility == :workspace
       assert annotation.user_id == owner.id
       assert annotation.text == "of cities and signs"
@@ -83,6 +84,110 @@ defmodule Studysync.AnnotationsTest do
                  "thoughts",
                  actor: stranger
                )
+    end
+  end
+
+  describe "create_question (Slice 10)" do
+    test "an active workspace member can create a question — type :question, mint color" do
+      {owner, _ws, resource} = setup_resource("question-owner@example.com")
+
+      {:ok, annotation} =
+        Annotations.create_question(
+          resource.id,
+          2,
+          @rect,
+          "what is invisible?",
+          "is the city the dream or the dreamer?",
+          actor: owner
+        )
+
+      assert annotation.type == :question
+      assert annotation.color == "mint"
+      assert annotation.visibility == :workspace
+      assert annotation.user_id == owner.id
+      assert annotation.body == "is the city the dream or the dreamer?"
+    end
+
+    test "non-members cannot create a question" do
+      {_owner, _ws, resource} = setup_resource("question-policy-owner@example.com")
+      stranger = register_user("question-policy-stranger@example.com")
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               Annotations.create_question(
+                 resource.id,
+                 1,
+                 @rect,
+                 "snippet",
+                 "thoughts",
+                 actor: stranger
+               )
+    end
+  end
+
+  describe "create_puzzle (Slice 10)" do
+    test "an active workspace member can create a puzzle — type :puzzle, lavender color" do
+      {owner, _ws, resource} = setup_resource("puzzle-owner@example.com")
+
+      {:ok, annotation} =
+        Annotations.create_puzzle(
+          resource.id,
+          1,
+          @rect,
+          "the bridge between Despina and Anastasia",
+          "two cities, one passage — what's the trick?",
+          actor: owner
+        )
+
+      assert annotation.type == :puzzle
+      assert annotation.color == "lavender"
+      assert annotation.visibility == :workspace
+      assert annotation.user_id == owner.id
+    end
+
+    test "non-members cannot create a puzzle" do
+      {_owner, _ws, resource} = setup_resource("puzzle-policy-owner@example.com")
+      stranger = register_user("puzzle-policy-stranger@example.com")
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               Annotations.create_puzzle(
+                 resource.id,
+                 1,
+                 @rect,
+                 "snippet",
+                 "thoughts",
+                 actor: stranger
+               )
+    end
+
+    test "create broadcasts :annotation_created for each type" do
+      {owner, _ws, resource} = setup_resource("type-broadcast-owner@example.com")
+
+      :ok = Studysync.Annotations.PubSub.subscribe(resource.id)
+
+      # Different process so the broadcast isn't filtered as self.
+      parent = self()
+
+      ref_q = make_ref()
+
+      spawn_link(fn ->
+        :ok = Studysync.Annotations.PubSub.subscribe(resource.id)
+        send(parent, {ref_q, :ready})
+
+        receive do
+          {:annotation_created, payload} -> send(parent, {ref_q, :got, payload})
+        after
+          1_000 -> send(parent, {ref_q, :timeout})
+        end
+      end)
+
+      assert_receive {^ref_q, :ready}, 500
+
+      {:ok, q} =
+        Annotations.create_question(resource.id, 1, @rect, "snippet", "body", actor: owner)
+
+      assert_receive {^ref_q, :got, %{id: id, resource_id: rid}}, 500
+      assert id == q.id
+      assert rid == resource.id
     end
   end
 

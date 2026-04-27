@@ -28,11 +28,17 @@ defmodule StudysyncWeb.PdfLive.Show do
          |> assign(:annotation_counter, length(annotations))
          |> assign(:selection, nil)
          |> assign(:annotation_form, nil)
+         |> assign(:annotation_form_type, nil)
          |> assign(:active_annotation_id, nil)
          |> assign(:expanded_thread_id, nil)
          |> assign(:thread_replies, [])
          |> assign(:reply_form, nil)
-         |> stream(:annotations, annotations, dom_id: &"margin-note-#{&1.id}")}
+         |> assign(:filter_type, :all)
+         |> stream(
+           :annotations,
+           filtered(annotations, :all),
+           dom_id: &"margin-note-#{&1.id}"
+         )}
 
       _ ->
         {:ok,
@@ -91,10 +97,22 @@ defmodule StudysyncWeb.PdfLive.Show do
       </main>
 
       <aside class="w-[360px] shrink-0 bg-paper-2 border-l border-paper-2 flex flex-col">
-        <header class="px-6 py-4 border-b border-paper-2/60">
+        <header class="px-6 py-4 border-b border-paper-2/60 space-y-3">
           <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-            Margin · <span class="num">{length(@annotations)}</span> notes
+            Margin · <span class="num">{filtered_count(@annotations, @filter_type)}</span>
+            of <span class="num">{length(@annotations)}</span>
+            notes
           </p>
+
+          <nav aria-label="Filter by type" class="flex flex-wrap gap-1.5">
+            <.filter_chip
+              :for={chip <- filter_chips()}
+              type={chip.type}
+              label={chip.label}
+              count={chip_count(@annotations, chip.type)}
+              active?={@filter_type == chip.type}
+            />
+          </nav>
         </header>
 
         <div
@@ -106,6 +124,7 @@ defmodule StudysyncWeb.PdfLive.Show do
             :if={@annotation_form}
             form={@annotation_form}
             selection={@selection}
+            type={@annotation_form_type}
           />
 
           <p
@@ -113,6 +132,13 @@ defmodule StudysyncWeb.PdfLive.Show do
             class="font-serif italic text-ink-soft"
           >
             Highlight a passage in the page to leave a note.
+          </p>
+
+          <p
+            :if={@annotations != [] and filtered_count(@annotations, @filter_type) == 0}
+            class="font-serif italic text-ink-soft"
+          >
+            No {filter_label(@filter_type)} on this book yet.
           </p>
 
           <div id="margin-notes" phx-update="stream" class="space-y-2">
@@ -176,12 +202,13 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   attr :form, :any, required: true
   attr :selection, :map, required: true
+  attr :type, :atom, required: true
 
   defp annotation_form_section(assigns) do
     ~H"""
     <section class="border-l-2 border-terracotta pl-4 py-3 mb-4 bg-paper">
       <p class="font-mono text-[10px] uppercase tracking-widest text-terracotta mb-2">
-        New note · page <span class="num">{@selection.page}</span>
+        New {form_label(@type)} · page <span class="num">{@selection.page}</span>
       </p>
 
       <blockquote class="font-serif italic text-ink-soft text-sm border-l border-paper-2 pl-2 mb-3">
@@ -195,7 +222,7 @@ defmodule StudysyncWeb.PdfLive.Show do
           rows="3"
           required
           autofocus
-          placeholder="Your note…"
+          placeholder={form_placeholder(@type)}
           class="w-full textarea text-sm font-serif"
         >{Phoenix.HTML.Form.normalize_value("textarea", @form[:body].value)}</textarea>
 
@@ -210,7 +237,41 @@ defmodule StudysyncWeb.PdfLive.Show do
     """
   end
 
-  def handle_event("text_selected", %{"text" => text, "page" => page, "rect" => rect}, socket) do
+  attr :type, :atom, required: true
+  attr :label, :string, required: true
+  attr :count, :integer, default: 0
+  attr :active?, :boolean, default: false
+
+  defp filter_chip(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="set_filter"
+      phx-value-type={to_string(@type)}
+      aria-pressed={to_string(@active?)}
+      class={[
+        "font-mono text-[10px] uppercase tracking-widest px-2 py-1 rounded-sm border transition-colors cursor-pointer",
+        if(@active?,
+          do: "bg-terracotta text-paper border-terracotta",
+          else:
+            "bg-paper text-ink-soft border-paper-2 hover:border-terracotta/40 hover:text-terracotta"
+        )
+      ]}
+    >
+      {@label}
+      <span class="num ml-1 opacity-70">{@count}</span>
+    </button>
+    """
+  end
+
+  def handle_event(
+        "text_selected",
+        %{"text" => text, "page" => page, "rect" => rect} = params,
+        socket
+      ) do
+    type = parse_create_type(Map.get(params, "type"))
+    action = action_for(type)
+
     selection = %{
       text: text,
       page: page,
@@ -219,7 +280,7 @@ defmodule StudysyncWeb.PdfLive.Show do
 
     form =
       Annotations.Annotation
-      |> AshPhoenix.Form.for_create(:create_comment,
+      |> AshPhoenix.Form.for_create(action,
         actor: socket.assigns.current_user,
         params: %{
           "resource_id" => socket.assigns.resource.id,
@@ -234,11 +295,29 @@ defmodule StudysyncWeb.PdfLive.Show do
     {:noreply,
      socket
      |> assign(:selection, selection)
-     |> assign(:annotation_form, form)}
+     |> assign(:annotation_form, form)
+     |> assign(:annotation_form_type, type)}
   end
 
   def handle_event("cancel_annotation", _params, socket) do
-    {:noreply, socket |> assign(:selection, nil) |> assign(:annotation_form, nil)}
+    {:noreply,
+     socket
+     |> assign(:selection, nil)
+     |> assign(:annotation_form, nil)
+     |> assign(:annotation_form_type, nil)}
+  end
+
+  def handle_event("set_filter", %{"type" => type}, socket) do
+    filter_type = parse_filter_type(type)
+
+    {:noreply,
+     socket
+     |> assign(:filter_type, filter_type)
+     |> stream(
+       :annotations,
+       filtered(socket.assigns.annotations, filter_type),
+       reset: true
+     )}
   end
 
   # Margin → PDF: clicking a margin note focuses the annotation. The Svelte
@@ -316,25 +395,29 @@ defmodule StudysyncWeb.PdfLive.Show do
   def handle_event("save_annotation", %{"form" => params}, socket) do
     actor = socket.assigns.current_user
     selection = socket.assigns.selection
+    type = socket.assigns.annotation_form_type || :comment
 
     body = Map.get(params, "body", "")
 
-    case Annotations.create_comment(
-           socket.assigns.resource.id,
-           selection.page,
-           selection.rect,
-           selection.text,
-           body,
-           actor: actor,
-           load: [:user, :reply_count]
-         ) do
+    result =
+      apply(Annotations, create_fun_for(type), [
+        socket.assigns.resource.id,
+        selection.page,
+        selection.rect,
+        selection.text,
+        body,
+        [actor: actor, load: [:user, :reply_count]]
+      ])
+
+    case result do
       {:ok, annotation} ->
         {:noreply,
          socket
          |> insert_annotation(annotation)
          |> assign(:selection, nil)
          |> assign(:annotation_form, nil)
-         |> put_flash(:info, "Note saved.")}
+         |> assign(:annotation_form_type, nil)
+         |> put_flash(:info, save_flash(type))}
 
       {:error, %AshPhoenix.Form{} = form} ->
         {:noreply, assign(socket, :annotation_form, form)}
@@ -390,10 +473,16 @@ defmodule StudysyncWeb.PdfLive.Show do
       next_number = socket.assigns.annotation_counter + 1
       numbered = Map.put(annotation, :display_number, next_number)
 
-      socket
-      |> assign(:annotation_counter, next_number)
-      |> assign(:annotations, socket.assigns.annotations ++ [numbered])
-      |> stream_insert(:annotations, numbered)
+      socket =
+        socket
+        |> assign(:annotation_counter, next_number)
+        |> assign(:annotations, socket.assigns.annotations ++ [numbered])
+
+      if visible_under_filter?(numbered, socket.assigns.filter_type) do
+        stream_insert(socket, :annotations, numbered)
+      else
+        socket
+      end
     end
   end
 
@@ -410,9 +499,13 @@ defmodule StudysyncWeb.PdfLive.Show do
             if a.id == annotation_id, do: updated, else: a
           end)
 
-        socket
-        |> assign(:annotations, annotations)
-        |> stream_insert(:annotations, updated)
+        socket = assign(socket, :annotations, annotations)
+
+        if visible_under_filter?(updated, socket.assigns.filter_type) do
+          stream_insert(socket, :annotations, updated)
+        else
+          socket
+        end
     end
   end
 
@@ -438,8 +531,15 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   defp refresh_annotation(socket, id) do
     case Enum.find(socket.assigns.annotations, &(&1.id == id)) do
-      nil -> socket
-      annotation -> stream_insert(socket, :annotations, annotation)
+      nil ->
+        socket
+
+      annotation ->
+        if visible_under_filter?(annotation, socket.assigns.filter_type) do
+          stream_insert(socket, :annotations, annotation)
+        else
+          socket
+        end
     end
   end
 
@@ -491,6 +591,69 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   defp author_email(%{user: %{email: email}}) when not is_nil(email), do: to_string(email)
   defp author_email(_), do: nil
+
+  # Per-type filter chips above the margin column. `:all` is the default lens;
+  # the per-type entries map 1:1 to the action set on Annotation.
+  defp filter_chips do
+    [
+      %{type: :all, label: "All"},
+      %{type: :comment, label: "Comments"},
+      %{type: :question, label: "Questions"},
+      %{type: :puzzle, label: "Puzzles"}
+    ]
+  end
+
+  defp filtered(annotations, :all), do: annotations
+
+  defp filtered(annotations, type) when type in [:comment, :question, :puzzle] do
+    Enum.filter(annotations, &(&1.type == type))
+  end
+
+  defp filtered_count(annotations, type) do
+    annotations |> filtered(type) |> length()
+  end
+
+  defp chip_count(annotations, :all), do: length(annotations)
+  defp chip_count(annotations, type), do: filtered_count(annotations, type)
+
+  defp visible_under_filter?(_annotation, :all), do: true
+  defp visible_under_filter?(%{type: type}, type), do: true
+  defp visible_under_filter?(_, _), do: false
+
+  defp parse_filter_type("all"), do: :all
+  defp parse_filter_type("comment"), do: :comment
+  defp parse_filter_type("question"), do: :question
+  defp parse_filter_type("puzzle"), do: :puzzle
+  defp parse_filter_type(_), do: :all
+
+  defp parse_create_type("question"), do: :question
+  defp parse_create_type("puzzle"), do: :puzzle
+  defp parse_create_type(_), do: :comment
+
+  defp action_for(:question), do: :create_question
+  defp action_for(:puzzle), do: :create_puzzle
+  defp action_for(_), do: :create_comment
+
+  defp create_fun_for(:question), do: :create_question
+  defp create_fun_for(:puzzle), do: :create_puzzle
+  defp create_fun_for(_), do: :create_comment
+
+  defp form_label(:question), do: "question"
+  defp form_label(:puzzle), do: "puzzle"
+  defp form_label(_), do: "note"
+
+  defp form_placeholder(:question), do: "Your question…"
+  defp form_placeholder(:puzzle), do: "What's puzzling here?"
+  defp form_placeholder(_), do: "Your note…"
+
+  defp save_flash(:question), do: "Question saved."
+  defp save_flash(:puzzle), do: "Puzzle saved."
+  defp save_flash(_), do: "Note saved."
+
+  defp filter_label(:comment), do: "comments"
+  defp filter_label(:question), do: "questions"
+  defp filter_label(:puzzle), do: "puzzles"
+  defp filter_label(_), do: "notes"
 
   defp format_error(%Ash.Error.Forbidden{}), do: "Not allowed."
 
