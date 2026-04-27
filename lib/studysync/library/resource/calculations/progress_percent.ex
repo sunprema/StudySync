@@ -27,7 +27,7 @@ defmodule Studysync.Library.Resource.Calculations.ProgressPercent do
       cond do
         pc <= 0 -> 0
         max <= 0 -> 0
-        true -> trunc(max * 100 / pc)
+        true -> min(100, trunc(max * 100 / pc))
       end
     end)
   end

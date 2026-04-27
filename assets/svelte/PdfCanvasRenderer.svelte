@@ -34,11 +34,16 @@
   //                        milestone_mode clicks a page to drop a checkpoint.
   //   apply_stamp        → { milestone_id } when the user confirms a stamp from
   //                        the milestone popover.
-  //   pages_visible      → { first, last } emitted (debounced) whenever the set
-  //                        of pages intersecting the viewport changes. The LV
-  //                        uses `first` as the focal page so the margin column
-  //                        can highlight cards on that page via background
-  //                        color. (added Slice 15; revised Slice 15a)
+  //   pages_visible      → { first, last, primary } emitted (debounced)
+  //                        whenever the set of pages intersecting the viewport
+  //                        changes. `first`/`last` reflect the IO range
+  //                        (with rootMargin); `primary` is the page with the
+  //                        largest visual overlap against the actual viewport.
+  //                        The LV uses `primary` as the focal page so the
+  //                        margin column highlight + Page-scope tab match
+  //                        what the reader is actually looking at.
+  //                        (added Slice 15; revised Slice 15a; `primary`
+  //                        added when scope tabs landed.)
   let {
     file_url,
     total_pages = 0,
@@ -412,6 +417,16 @@
   // Slice 15.1/15.2 — push the current visible-page range to LV.
   // Debounced (120ms) so a fast scroll doesn't fire on every IO callback;
   // and de-duped so we don't ship the same range twice in a row.
+  //
+  // `first`/`last` come from `visiblePages`, which is populated by an
+  // IntersectionObserver with a 1000px rootMargin — i.e. it includes
+  // pages just above/below the actual viewport so they can pre-render.
+  // That set is too generous to answer "what page is the reader looking
+  // at?" — `first` can be a page mostly above the viewport. So we also
+  // compute a `primary` page (the one with the largest visual overlap
+  // against the *true* viewport) and ship it as a third field. The LV
+  // uses `primary` as the focal page; `first`/`last` retain their
+  // virtualization-range meaning.
   function scheduleVisiblePagesReport() {
     if (visiblePagesDebounce) clearTimeout(visiblePagesDebounce);
     visiblePagesDebounce = setTimeout(() => {
@@ -423,16 +438,47 @@
         if (p < first) first = p;
         if (p > last) last = p;
       }
+
+      const primary = computePrimaryPage(first);
+
       if (
         lastReportedRange &&
         lastReportedRange.first === first &&
-        lastReportedRange.last === last
+        lastReportedRange.last === last &&
+        lastReportedRange.primary === primary
       ) {
         return;
       }
-      lastReportedRange = { first, last };
-      pushEvent("pages_visible", { first, last });
+      lastReportedRange = { first, last, primary };
+      pushEvent("pages_visible", { first, last, primary });
     }, 120);
+  }
+
+  // Pick the page whose container has the largest visible overlap with
+  // the scroll container's true viewport. Falls back to `first` when no
+  // candidate has any visible overlap (rare — happens during teardown
+  // before `pages` is populated).
+  function computePrimaryPage(first) {
+    if (!scrollEl) return first;
+    const root = scrollEl.getBoundingClientRect();
+    let bestPage = null;
+    let bestOverlap = 0;
+
+    for (const p of visiblePages) {
+      const slot = pages[p - 1];
+      if (!slot?.container) continue;
+      const r = slot.container.getBoundingClientRect();
+      const overlap = Math.max(
+        0,
+        Math.min(r.bottom, root.bottom) - Math.max(r.top, root.top),
+      );
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap;
+        bestPage = p;
+      }
+    }
+
+    return bestPage ?? first;
   }
 
   async function renderPage(num) {
@@ -702,7 +748,7 @@
               onfocus={() => dispatchMarkerHover(a.id)}
               onblur={() => dispatchMarkerHover(null)}
             >
-              <sup>{a.number}</sup>
+              <span class="marker-num">{a.number}</span>
             </button>
           {/each}
 
@@ -975,41 +1021,59 @@
     z-index: 2;
   }
 
+  /* Annotation markers — small yellow badge with the footnote number
+     centered inside, anchored at the end of the annotated rect on each
+     page. The yellow ("butter") tint is one of the §5.1 highlight pastels
+     so the marker reads as a paper-style sticky note rather than a UI
+     control. Bumped from a quiet superscript to a more prominent badge
+     so peer notes register at a glance during reading. */
   .annotation-marker {
     position: absolute;
     transform: translate(-2px, -50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
     font-family: var(--font-mono);
-    color: var(--color-terracotta);
-    font-size: 0.65rem;
+    color: var(--color-ink);
+    font-size: 0.78rem;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     line-height: 1;
     pointer-events: auto;
     cursor: pointer;
-    background: transparent;
-    border: none;
-    padding: 0.1rem 0.25rem;
-    border-radius: 2px;
+    background: #f5d86e;
+    border: 1px solid color-mix(in srgb, var(--color-terracotta) 25%, transparent);
+    padding: 0;
+    border-radius: 3px;
     transition:
       opacity 0.12s ease,
       background-color 0.12s ease,
+      border-color 0.12s ease,
       transform 0.12s ease;
   }
 
   .annotation-marker:hover {
-    background: color-mix(in srgb, var(--color-terracotta) 14%, transparent);
+    background: #f1cd4a;
+    border-color: color-mix(in srgb, var(--color-terracotta) 50%, transparent);
   }
 
   .annotation-marker:focus-visible {
     outline: 1px solid var(--color-terracotta);
-    outline-offset: 1px;
+    outline-offset: 2px;
   }
 
-  .annotation-marker sup {
-    font-size: inherit;
+  .annotation-marker .marker-num {
+    /* Force a normal flow inside the flex centre — without this an inline
+       baseline can drift the digit a hair below the visual centre. */
+    display: block;
+    line-height: 1;
   }
 
   .annotation-marker.is-active {
-    background: color-mix(in srgb, var(--color-terracotta) 18%, transparent);
+    background: #f1cd4a;
+    border-color: var(--color-terracotta);
   }
 
   .annotation-marker.is-dim {

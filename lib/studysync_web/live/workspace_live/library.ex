@@ -7,6 +7,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
   alias Studysync.Activity.PubSub, as: ActivityPubSub
   alias Studysync.Annotations.Annotation
   alias Studysync.Library
+  alias Studysync.Library.Resource
   alias Studysync.Progress.MilestoneMarker
   alias Studysync.Workspaces
   alias Studysync.Workspaces.Membership
@@ -324,11 +325,19 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
   # Activity rail (Slice 8): a peer just created an annotation in a resource
   # somewhere in this workspace. Refetch as our actor so private items don't
   # leak past their author.
+  #
+  # Also recompute the progress matrix row for the annotation's resource and
+  # `stream_insert` the resource so the open dashboard's progress timeline,
+  # group-avg badge, and reader cards reflect the new annotation in real
+  # time. Without this the matrix stays at its mount-time snapshot and shows
+  # stale 0% / 0s for users whose annotations arrive while the page is open.
   def handle_info(
         {:activity_annotation_created, %{annotation_id: annotation_id, workspace_id: ws_id}},
         socket
       ) do
     if ws_id == socket.assigns.workspace.id do
+      socket = refresh_progress_for_annotation(socket, annotation_id)
+
       handle_activity(socket, fn ->
         Activity.event_from_annotation(annotation_id, actor: socket.assigns.current_user)
       end)
@@ -454,7 +463,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
 
   defp compute_progress_percent(anns, pc) do
     max = anns |> Enum.map(& &1.page_number) |> Enum.max(fn -> 0 end)
-    if max <= 0, do: 0, else: trunc(max * 100 / pc)
+    if max <= 0, do: 0, else: min(100, trunc(max * 100 / pc))
   end
 
   defp compute_time_spent([]), do: 0
@@ -463,6 +472,70 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
   defp compute_time_spent(anns) do
     timestamps = Enum.map(anns, & &1.inserted_at)
     DateTime.diff(Enum.max(timestamps, DateTime), Enum.min(timestamps, DateTime), :second)
+  end
+
+  # Recompute the matrix row for a single resource and re-stream the
+  # resource so its article re-renders. Triggered from a peer's
+  # `:activity_annotation_created` broadcast — we only know the annotation
+  # id, so we look up its resource_id and rebuild that row only.
+  #
+  # `authorize?: false` on the annotation lookup is intentional: progress
+  # math reads page_number metadata only, mirroring the existing
+  # `member_progress_matrix` (and the per-user `ProgressPercent` calc, see
+  # its Slice 14 audit note). The resource itself is reloaded with the
+  # actor so authorization on the resource record stays honest.
+  defp refresh_progress_for_annotation(socket, annotation_id) do
+    case Ash.get(Annotation, annotation_id, authorize?: false) do
+      {:ok, %{resource_id: resource_id}} when not is_nil(resource_id) ->
+        refresh_resource_progress(socket, resource_id)
+
+      _ ->
+        socket
+    end
+  end
+
+  defp refresh_resource_progress(socket, resource_id) do
+    actor = socket.assigns.current_user
+
+    case Ash.get(Resource, resource_id,
+           actor: actor,
+           load: [:uploaded_by, :avg_progress_percent]
+         ) do
+      {:ok, resource} ->
+        members = socket.assigns.members
+        row = compute_resource_row(resource, members)
+        matrix = Map.put(socket.assigns.progress_matrix, resource.id, row)
+
+        socket
+        |> assign(:progress_matrix, matrix)
+        |> stream_insert(:resources, resource)
+
+      _ ->
+        socket
+    end
+  end
+
+  defp compute_resource_row(resource, members) do
+    member_ids = Enum.map(members, & &1.user_id)
+    pc = resource.page_count || 0
+
+    grouped =
+      Annotation
+      |> Ash.Query.filter(resource_id == ^resource.id and user_id in ^member_ids)
+      |> Ash.Query.select([:user_id, :page_number, :inserted_at])
+      |> Ash.read!(authorize?: false)
+      |> Enum.group_by(& &1.user_id)
+
+    Enum.map(members, fn m ->
+      anns = Map.get(grouped, m.user_id, [])
+
+      %{
+        user_id: m.user_id,
+        email: m.email,
+        progress_percent: compute_progress_percent(anns, pc),
+        time_spent_seconds: compute_time_spent(anns)
+      }
+    end)
   end
 
   defp empty_matrix_row(members) do

@@ -332,7 +332,7 @@ defmodule Studysync.LibraryTest do
       assert loaded.avg_progress_percent == 0
     end
 
-    test "avg_progress_percent — averages max page across annotators", %{
+    test "avg_progress_percent — averages max page across all active members", %{
       owner: owner,
       workspace: ws,
       resource: resource
@@ -357,16 +357,18 @@ defmodule Studysync.LibraryTest do
       assert loaded.avg_progress_percent == 66
     end
 
-    test "avg_progress_percent — non-annotators are not counted as 0%", %{
+    test "avg_progress_percent — silent members count as 0% in the avg", %{
       owner: owner,
       workspace: ws,
       resource: resource
     } do
       _silent = accept_member(ws, owner, "silent-member@example.com")
 
-      # Only owner has annotated, on page 3 of 3 → 100%.
-      # The silent member has zero engagement and shouldn't drag the avg
-      # down to 50% — that's reader-card territory, not group pace.
+      # Only owner has annotated, on page 3 of 3.
+      # Two active members, one at max-page 3 and one at 0 → avg max page
+      # = 3/2 = 1.5 → 1.5/3 = 50%. The avatar pins on the dashboard show
+      # both members, so the avg should average over the same denominator
+      # (active workspace members), not just annotators.
       {:ok, _} =
         Studysync.Annotations.create_comment(resource.id, 3, @rect, "o", "b", actor: owner)
 
@@ -377,7 +379,7 @@ defmodule Studysync.LibraryTest do
           load: [:avg_progress_percent]
         )
 
-      assert loaded.avg_progress_percent == 100
+      assert loaded.avg_progress_percent == 50
     end
   end
 end

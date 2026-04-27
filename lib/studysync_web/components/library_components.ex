@@ -73,9 +73,15 @@ defmodule StudysyncWeb.LibraryComponents do
   attr :focal?, :boolean, default: false
   attr :reply_count, :integer, default: 0
   attr :expanded?, :boolean, default: false
+  attr :now, :any, default: nil
   slot :thread
 
   def margin_note(assigns) do
+    assigns =
+      if assigns[:now],
+        do: assigns,
+        else: Phoenix.Component.assign(assigns, :now, DateTime.utc_now())
+
     ~H"""
     <article
       id={"margin-note-#{@annotation.id}"}
@@ -139,7 +145,7 @@ defmodule StudysyncWeb.LibraryComponents do
       </div>
 
       <blockquote class={[
-        "font-serif italic text-ink-soft text-sm border-l pl-2 mb-2 truncate",
+        "font-serif italic text-ink-soft text-sm border-l pl-2 mb-2 line-clamp-6 whitespace-pre-line",
         type_quote_border_class(@annotation.type)
       ]}>
         “{@annotation.text}”
@@ -148,7 +154,7 @@ defmodule StudysyncWeb.LibraryComponents do
       <p class="font-serif text-ink text-sm whitespace-pre-wrap">{@annotation.body}</p>
 
       <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-2">
-        {format_date(@annotation.inserted_at)}
+        {relative_time(@annotation.inserted_at, @now)}
       </p>
 
       <button
@@ -186,8 +192,14 @@ defmodule StudysyncWeb.LibraryComponents do
   """
   attr :reply, :map, required: true
   attr :author_email, :string, default: nil
+  attr :now, :any, default: nil
 
   def thread_reply(assigns) do
+    assigns =
+      if assigns[:now],
+        do: assigns,
+        else: Phoenix.Component.assign(assigns, :now, DateTime.utc_now())
+
     ~H"""
     <article
       id={"thread-reply-#{@reply.id}"}
@@ -223,7 +235,7 @@ defmodule StudysyncWeb.LibraryComponents do
         <p class="font-serif text-ink text-sm whitespace-pre-wrap">{@reply.body}</p>
 
         <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-2">
-          {format_date(@reply.inserted_at)}
+          {relative_time(@reply.inserted_at, @now)}
         </p>
       </div>
     </article>

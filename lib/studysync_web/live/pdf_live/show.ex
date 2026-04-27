@@ -51,6 +51,7 @@ defmodule StudysyncWeb.PdfLive.Show do
           |> assign(:thread_replies, [])
           |> assign(:reply_form, nil)
           |> assign(:filter_type, :all)
+          |> assign(:filter_scope, :all)
           |> assign(:milestones, milestones)
           |> assign(:is_admin?, is_admin?)
           |> assign(:total_readers, total_readers)
@@ -113,6 +114,20 @@ defmodule StudysyncWeb.PdfLive.Show do
   end
 
   def render(assigns) do
+    # Derive the scoped annotation list once. The template displays counts
+    # in a few places (header line, filter chip badges) and short assign
+    # names keep the HEEx interpolations on one line so the formatter
+    # doesn't reflow them across `<span>` boundaries.
+    scoped = scoped_annotations(assigns.annotations, assigns.filter_scope, assigns.focal_page)
+
+    assigns =
+      assigns
+      |> assign(:scoped_visible, visible_annotations(scoped, assigns.filter_type))
+      |> assign(:scoped_total, length(scoped))
+      |> assign(:scoped_filtered, filtered_count(scoped, assigns.filter_type))
+      |> assign(:scoped_annotations, scoped)
+      |> assign(:page_focal_count, page_scope_count(assigns.annotations, assigns.focal_page))
+
     ~H"""
     <div
       class="flex h-screen w-full bg-paper text-ink overflow-hidden"
@@ -190,9 +205,24 @@ defmodule StudysyncWeb.PdfLive.Show do
 
       <aside class="w-[360px] shrink-0 bg-paper-2 border-l border-paper-2 flex flex-col">
         <header class="px-6 py-4 border-b border-paper-2/60 space-y-3">
+          <nav aria-label="Scope" class="flex gap-1.5">
+            <.scope_tab
+              scope={:all}
+              label="All"
+              count={length(@annotations)}
+              active?={@filter_scope == :all}
+            />
+            <.scope_tab
+              scope={:page}
+              label="Page"
+              count={@focal_page}
+              active?={@filter_scope == :page}
+            />
+          </nav>
+
           <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-            Margin · <span class="num">{filtered_count(@annotations, @filter_type)}</span>
-            of <span class="num">{length(@annotations)}</span>
+            Margin · <span class="num">{@scoped_filtered}</span>
+            of <span class="num">{@scoped_total}</span>
             notes
           </p>
 
@@ -201,7 +231,7 @@ defmodule StudysyncWeb.PdfLive.Show do
               :for={chip <- filter_chips()}
               type={chip.type}
               label={chip.label}
-              count={chip_count(@annotations, chip.type)}
+              count={chip_count(@scoped_annotations, chip.type)}
               active?={@filter_type == chip.type}
             />
           </nav>
@@ -238,7 +268,17 @@ defmodule StudysyncWeb.PdfLive.Show do
           />
 
           <.empty_state
-            :if={@annotations != [] and filtered_count(@annotations, @filter_type) == 0}
+            :if={@annotations != [] and @filter_scope == :page and @page_focal_count == 0}
+            kind={:no_page_notes}
+            label={focal_page_label(@focal_page)}
+          />
+
+          <.empty_state
+            :if={
+              @annotations != [] and
+                (@filter_scope == :all or @page_focal_count > 0) and
+                @scoped_filtered == 0
+            }
             kind={:no_filtered}
             label={filter_label(@filter_type)}
           />
@@ -248,11 +288,12 @@ defmodule StudysyncWeb.PdfLive.Show do
             the book, sorted by (page, inserted_at). Cards on the focal
             page get a `bg-paper` background so they pop out of the
             paper-2 column without the layout shifting as the reader
-            scrolls. Filter chips narrow this list in place.
+            scrolls. Filter chips narrow this list in place. The scope
+            tabs further narrow to only the focal page when active.
           --%>
           <div id="margin-notes" class="space-y-2">
             <.margin_note
-              :for={annotation <- visible_annotations(@annotations, @filter_type)}
+              :for={annotation <- @scoped_visible}
               number={annotation.display_number}
               annotation={annotation}
               author_email={author_email(annotation)}
@@ -405,7 +446,7 @@ defmodule StudysyncWeb.PdfLive.Show do
   # passage, and the "no comments/questions/puzzles on this book yet"
   # variant that sits under the filter chips when the active filter
   # produces nothing. SVG only — no emoji per CLAUDE.md §5.4.
-  attr :kind, :atom, values: [:no_annotations, :no_filtered], required: true
+  attr :kind, :atom, values: [:no_annotations, :no_filtered, :no_page_notes], required: true
   attr :label, :string, default: nil
 
   defp empty_state(assigns) do
@@ -442,6 +483,8 @@ defmodule StudysyncWeb.PdfLive.Show do
             No notes yet. Highlight a passage in the page to leave the first one.
           <% :no_filtered -> %>
             No {@label} on this book yet. Try a different filter, or start one.
+          <% :no_page_notes -> %>
+            No notes on {@label} yet. Switch to "All" or highlight a passage to start one.
         <% end %>
       </p>
     </section>
@@ -466,6 +509,37 @@ defmodule StudysyncWeb.PdfLive.Show do
           do: "bg-terracotta text-paper border-terracotta",
           else:
             "bg-paper text-ink-soft border-paper-2 hover:border-terracotta/40 hover:text-terracotta"
+        )
+      ]}
+    >
+      {@label}
+      <span class="num ml-1 opacity-70">{@count}</span>
+    </button>
+    """
+  end
+
+  # Scope tabs above the filter chips. "All" shows every annotation in the
+  # book; "Page" narrows to the current focal page (the topmost page in the
+  # viewport, fed by the canvas's `pages_visible` event). The user picks
+  # which lens they want — we don't auto-switch as they scroll.
+  attr :scope, :atom, required: true
+  attr :label, :string, required: true
+  attr :count, :integer, default: 0
+  attr :active?, :boolean, default: false
+
+  defp scope_tab(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="set_scope"
+      phx-value-scope={to_string(@scope)}
+      aria-pressed={to_string(@active?)}
+      class={[
+        "font-mono text-[11px] uppercase tracking-widest px-3 py-1.5 transition-colors cursor-pointer",
+        "border-b-2",
+        if(@active?,
+          do: "text-ink border-terracotta",
+          else: "text-ink-soft border-transparent hover:text-terracotta"
         )
       ]}
     >
@@ -678,12 +752,18 @@ defmodule StudysyncWeb.PdfLive.Show do
   end
 
   # Slice 15a (revert): Svelte's IntersectionObserver reports which pages
-  # intersect the viewport. We just track the *first* visible page as
-  # `:focal_page`; the margin column highlights cards on that page via a
-  # background-color treatment (no zone re-shuffling, no DB hit).
-  def handle_event("pages_visible", %{"first" => first, "last" => _last}, socket) do
+  # intersect the viewport. The canvas also includes a `primary` field —
+  # the page with the largest visual overlap with the actual viewport
+  # (the rootMargin-expanded `first` is too generous: when a sliver of
+  # the previous page sits within the 1000px buffer above the viewport,
+  # `first` lands on it even though the reader is looking at the next
+  # page). We use `primary` as `:focal_page`; the margin column then
+  # highlights cards on that page (Slice 15a) and the "Page" scope tab
+  # filters to it.
+  def handle_event("pages_visible", %{"first" => first} = params, socket) do
+    primary = Map.get(params, "primary", first)
     total_pages = socket.assigns.resource.page_count
-    new_focal = first |> to_int() |> max(1) |> min(total_pages)
+    new_focal = primary |> to_int() |> max(1) |> min(total_pages)
 
     if new_focal == socket.assigns.focal_page do
       {:noreply, socket}
@@ -694,6 +774,10 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   def handle_event("set_filter", %{"type" => type}, socket) do
     {:noreply, assign(socket, :filter_type, parse_filter_type(type))}
+  end
+
+  def handle_event("set_scope", %{"scope" => scope}, socket) do
+    {:noreply, assign(socket, :filter_scope, parse_filter_scope(scope))}
   end
 
   # Margin → PDF: clicking a margin note focuses the annotation. The Svelte
@@ -1106,6 +1190,29 @@ defmodule StudysyncWeb.PdfLive.Show do
   defp parse_filter_type("question"), do: :question
   defp parse_filter_type("puzzle"), do: :puzzle
   defp parse_filter_type(_), do: :all
+
+  defp parse_filter_scope("page"), do: :page
+  defp parse_filter_scope(_), do: :all
+
+  # Narrow the annotation list by the active scope. `:all` is the
+  # whole-book lens; `:page` clips to the focal page (the topmost page
+  # currently in the viewport). When the focal page is unset, the page
+  # lens shows nothing — the user hasn't scrolled to a page yet.
+  defp scoped_annotations(annotations, :all, _focal), do: annotations
+  defp scoped_annotations(_annotations, :page, nil), do: []
+
+  defp scoped_annotations(annotations, :page, focal_page) do
+    Enum.filter(annotations, &(&1.page_number == focal_page))
+  end
+
+  defp page_scope_count(_annotations, nil), do: 0
+
+  defp page_scope_count(annotations, focal_page) do
+    Enum.count(annotations, &(&1.page_number == focal_page))
+  end
+
+  defp focal_page_label(nil), do: "this page"
+  defp focal_page_label(page) when is_integer(page), do: "page #{page}"
 
   defp parse_create_type("question"), do: :question
   defp parse_create_type("puzzle"), do: :puzzle
