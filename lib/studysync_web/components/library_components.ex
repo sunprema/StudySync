@@ -103,6 +103,14 @@ defmodule StudysyncWeb.LibraryComponents do
         >
           {type_tag_label(@annotation.type)}
         </span>
+        <span
+          :if={@annotation.visibility == :private}
+          aria-label="Private — only visible to you"
+          title="Private — only visible to you"
+          class="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest text-ink-soft border border-paper-2 px-1 py-px rounded-sm"
+        >
+          <span class="hero-lock-closed-mini size-3" aria-hidden="true"></span> Private
+        </span>
         <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft truncate">
           {@author_email || "unknown"}
         </p>
@@ -459,6 +467,62 @@ defmodule StudysyncWeb.LibraryComponents do
   end
 
   defp format_duration(_), do: "—"
+
+  @doc """
+  Milestone panel (Slice 12) — lists admin-placed checkpoints for the current
+  resource in the margin column.
+
+  Each row shows the milestone label in serif, page number + creator email in
+  mono caps. The panel sits above the annotation list so a reader can see the
+  flagposts before diving into the comment thread.
+
+  `milestones` is a list of `Studysync.Progress.MilestoneMarker` structs (with
+  `:created_by` loaded).
+  """
+  attr :milestones, :list, required: true
+  attr :total_readers, :integer, default: 0
+  attr :class, :string, default: nil
+
+  def milestone_panel(assigns) do
+    ~H"""
+    <section class={["border border-paper-2 bg-paper px-4 py-3", @class]}>
+      <header class="flex items-baseline justify-between mb-2">
+        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+          Milestones · <span class="num">{length(@milestones)}</span>
+        </p>
+      </header>
+
+      <ol class="space-y-2">
+        <li
+          :for={milestone <- @milestones}
+          id={"milestone-#{milestone.id}"}
+          class="border-l-2 border-terracotta/60 pl-3"
+        >
+          <p class="font-serif text-ink text-sm">{milestone.label}</p>
+          <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-1">
+            P. <span class="num">{milestone.page_number}</span>
+            <span :if={milestone_creator_email(milestone)}>
+              · {milestone_creator_email(milestone)}
+            </span>
+            <span class="text-terracotta">
+              · <span class="num">{stamp_count(milestone)}</span>
+              / <span class="num">{@total_readers}</span>
+              stamped
+            </span>
+          </p>
+        </li>
+      </ol>
+    </section>
+    """
+  end
+
+  defp stamp_count(%{stamp_count: n}) when is_integer(n), do: n
+  defp stamp_count(_), do: 0
+
+  defp milestone_creator_email(%{created_by: %{email: email}}) when not is_nil(email),
+    do: to_string(email)
+
+  defp milestone_creator_email(_), do: nil
 
   @doc """
   Static chapter rail — left vertical column with chapter labels, mono caps.

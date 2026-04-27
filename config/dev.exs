@@ -2,6 +2,10 @@ import Config
 config :live_svelte, ssr_module: LiveSvelte.SSR.ViteJS, vite_host: "http://localhost:5173"
 config :ash, policies: [show_policy_breakdowns?: true]
 
+# Slice 15.3 — print slow LV / Studysync events to the console while
+# developing. Off by default in test/prod; see Studysync.Telemetry.DevLogger.
+config :studysync, dev_telemetry_logger?: true
+
 # Configure your database
 config :studysync, Studysync.Repo,
   username: "postgres",

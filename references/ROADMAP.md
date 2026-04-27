@@ -224,13 +224,19 @@ User selects text → "Ask AI" → Oban job runs → AI response appears as a co
 
 Workspace admins can place a milestone marker at a specific page/position. It renders on the PDF.
 
-- [ ] **12.1** Ash resource: `StudySync.Progress.MilestoneMarker` (resource_id, page_number, position, label, created_by)
-- [ ] **12.2** Ash action: `:create_milestone` — admins only via policy
-- [ ] **12.3** Admin-only UI: "Place milestone" mode in reader
-- [ ] **12.4** Svelte: render milestone markers on PDF (distinct from annotation markers)
-- [ ] **12.5** LiveView↔Svelte prop: `milestone_markers[]`
-- [ ] **12.6** Phoenix component: `<.milestone_panel>` listing milestones for current resource
-- [ ] **12.7** Tests: creation, policy (admin only), rendering
+- [x] **12.1** Ash resource: `StudySync.Progress.MilestoneMarker` (resource_id, page_number, position, label, created_by)
+  - Lives in a new `Studysync.Progress` domain so Slice 13's `RubberStamp` and any future progress artefacts share the same bounded context. `position` is `%{"x" => float, "y" => float}` normalized 0..1, mirroring `Annotation.rect`.
+- [x] **12.2** Ash action: `:create_milestone` — admins only via policy
+  - Enforced by `Studysync.Progress.Checks.ActorIsResourceWorkspaceAdmin`, which mirrors the resource-workspace member check used by annotations but requires `role: :admin`. Reads remain workspace-wide so non-admin members see the placed checkpoints.
+- [x] **12.3** Admin-only UI: "Place milestone" mode in reader
+  - Toggle button only renders when `Workspaces.actor_admin?/2` is true. While in placement mode the LV pushes `milestone_mode: true` to Svelte and shows a placement-hint banner; the canvas swaps the selection menu for click-to-drop. `milestone_placed` events are also re-checked server-side against `is_admin?` before the form opens.
+- [x] **12.4** Svelte: render milestone markers on PDF (distinct from annotation markers)
+  - Annotation markers stay quiet (terracotta superscripts in the prose). Milestones render as a small terracotta flag-on-a-stem with a mono-caps label flag, planted at the `position` point — visually distinct at a glance per Slice 12.4.
+- [x] **12.5** LiveView↔Svelte prop: `milestone_markers[]`
+  - Contract extended in CLAUDE.md §4.3 in the same change to add `milestone_markers[]`, `milestone_mode`, and `milestone_placed`. Payload shape is documented inline in `PdfCanvasRenderer.svelte`.
+- [x] **12.6** Phoenix component: `<.milestone_panel>` listing milestones for current resource
+- [x] **12.7** Tests: creation, policy (admin only), rendering
+  - Domain coverage in `test/studysync/progress_test.exs` (admin-only create, member/stranger forbidden, label required, read-policy fan-out). LiveView coverage in `pdf_live/show_test.exs` (admin sees toggle, non-admin doesn't, milestone_placed → form → save persists + renders, non-admin milestone_placed is a no-op, mounted milestones surface in the panel).
 
 ---
 
@@ -238,16 +244,23 @@ Workspace admins can place a milestone marker at a specific page/position. It re
 
 Users can stamp a milestone to mark completion. Stamps show progress (X/N users completed) with avatars.
 
-- [ ] **13.1** Ash resource: `StudySync.Progress.RubberStamp` (milestone_id, user_id, note, inserted_at)
-- [ ] **13.2** Ash action: `:apply_stamp` — one per user per milestone (unique constraint)
-- [ ] **13.3** Ash aggregate: stamp count per milestone
-- [ ] **13.4** Ash calculation: list of users who've stamped a given milestone
-- [ ] **13.5** LiveView↔Svelte event: `apply_stamp` → `{ milestone_id }`
-- [ ] **13.6** LiveView↔Svelte prop: `rubber_stamps[]`
-- [ ] **13.7** Clicking a milestone marker shows completion state and stamp option
-- [ ] **13.8** UI: "X / N readers" label and stamped-user avatar cluster
-- [ ] **13.9** PubSub broadcast on stamp, real-time update for everyone watching
-- [ ] **13.10** Tests: stamping, uniqueness, aggregate correctness
+- [x] **13.1** Ash resource: `StudySync.Progress.RubberStamp` (milestone_id, user_id, note, inserted_at)
+- [x] **13.2** Ash action: `:apply_stamp` — one per user per milestone (unique constraint)
+  - Uniqueness is enforced at the DB level via an Ash `identity` (`one_per_user_per_milestone`) so a double-click can't sneak a duplicate row through. The LV silently absorbs the duplicate as a no-op (`refresh_milestones` only) — racing two clicks shouldn't surface a scary error to the reader.
+- [x] **13.3** Ash aggregate: stamp count per milestone
+- [x] **13.4** Ash calculation: list of users who've stamped a given milestone
+  - Implemented as a `list :stamper_user_ids` aggregate on `MilestoneMarker` (Ash 3 `list` aggregate type, fed by the `has_many :stamps` association). The full stamper records — with email — come through `load: [stamps: :user]` for the popover avatar cluster.
+- [x] **13.5** LiveView↔Svelte event: `apply_stamp` → `{ milestone_id }`
+- [x] **13.6** LiveView↔Svelte prop: `rubber_stamps[]`
+  - Contract extended in CLAUDE.md §4.3 in the same change: added `rubber_stamps[]`, `current_user_id`, `total_readers` props plus the `apply_stamp` event. Payload shape is documented inline in `PdfCanvasRenderer.svelte`.
+- [x] **13.7** Clicking a milestone marker shows completion state and stamp option
+  - Marker is now a button; clicking opens an in-canvas popover anchored next to the flag. Outside-click and Escape close it. The popover lives in Svelte rather than the margin column because it's tightly anchored to marker geometry — moving it across the LV boundary would mean shipping x/y coords on every click.
+- [x] **13.8** UI: "X / N readers" label and stamped-user avatar cluster
+  - Popover shows label · "X / N readers" · avatar cluster (terracotta circle for self, paper-2 for others) · stamp button or "Stamped by you" indicator. Stamped milestones also gain a small terracotta badge on the marker itself so the count is visible without opening the popover. The margin-column milestone panel mirrors the X/N count for at-a-glance scanning.
+- [x] **13.9** PubSub broadcast on stamp, real-time update for everyone watching
+  - `Studysync.Progress.PubSub.broadcast_stamp_applied/3` rides the same per-resource topic the reader already subscribes to (`"resource:" <> resource_id`); subscribers refetch milestones (with stamps loaded) under the actor so per-actor read policies stay honest. Activity rail also lights up via `Activity.PubSub.broadcast_stamp_applied/3` + `Activity.event_from_stamp/2`, so Slice 8.2's `:stamped` type is now emitted.
+- [x] **13.10** Tests: stamping, uniqueness, aggregate correctness
+  - Domain coverage in `test/studysync/progress_test.exs` (stamp by member, forbidden for stranger, duplicate rejected, multi-stamp aggregate, `stamper_user_ids` correctness, read-policy fan-out). LiveView coverage in `pdf_live/show_test.exs` (canvas `apply_stamp` event persists + reflects in the panel; double-click is idempotent; out-of-band stamp arrives live via PubSub).
 
 ---
 
@@ -255,10 +268,14 @@ Users can stamp a milestone to mark completion. Stamps show progress (X/N users 
 
 Annotations have `:private | :workspace` visibility. Make the controls real and the policies airtight.
 
-- [ ] **14.1** Visibility toggle in annotation creation form
-- [ ] **14.2** Visibility indicator on margin note (small lock icon for private)
-- [ ] **14.3** Audit Ash policies for every annotation read path — private annotations never leak
-- [ ] **14.4** Tests: comprehensive policy tests covering author/non-author × private/workspace matrix
+- [x] **14.1** Visibility toggle in annotation creation form
+  - Hidden + checkbox pattern under the body textarea so the browser always submits a value (`workspace` default, `private` when ticked). Threaded through `save_annotation` as a `%{visibility: :private | :workspace}` input map; the action argument handles the rest. Form param is also seeded into `AshPhoenix.Form` so the user's choice survives a re-render if the action errors.
+- [x] **14.2** Visibility indicator on margin note (small lock icon for private)
+  - Small mono-caps `Private` tag with a `hero-lock-closed-mini` glyph in `<.margin_note>`, sitting in the header row alongside the type tag. Workspace notes show no chrome (per CLAUDE.md §5.4 — quiet by default).
+- [x] **14.3** Audit Ash policies for every annotation read path — private annotations never leak
+  - Read paths covered: `Annotations.list_annotations`/`get_annotation` (resource policy), `Annotations.list_replies` (parent-visibility policy), reply creation via `ActorCanReplyToAnnotation` (mirrors visibility), `Activity.list_for_workspace`/`event_from_annotation`/`event_from_reply` (all run under the actor), and the LV PubSub handlers (refetch under the actor; not_visible is dropped). The two `authorize?: false` reads in the codebase project only routing fields (`resource_id`) or progress metadata (`page_number`) — no body/text/snippet — and the latter case got an inline note in `progress_percent.ex`.
+- [x] **14.4** Tests: comprehensive policy tests covering author/non-author × private/workspace matrix
+  - New `visibility policy matrix (Slice 14)` block in `annotations_test.exs` walks all six cells for annotation reads, all six for reply reads, and all six for reply creation, plus an activity-feed leak check (private annotation/reply absent for non-authors, present for the author). New `visibility toggle (Slice 14)` block in `pdf_live/show_test.exs` covers the form toggle + the lock indicator.
 
 ---
 
@@ -266,12 +283,18 @@ Annotations have `:private | :workspace` visibility. Make the controls real and 
 
 Hit the perf targets in CLAUDE.md §6 with real measurement, not vibes.
 
-- [ ] **15.1** Lazy-load annotations per page — only fetch annotations for visible page range
-- [ ] **15.2** Annotation prefetch on scroll-near (one page ahead/behind)
-- [ ] **15.3** Profile LiveView re-renders with `:telemetry` — kill any unnecessary re-renders
-- [ ] **15.4** Profile PDF rendering — confirm page virtualization is actually working
-- [ ] **15.5** Add basic `:telemetry` events for: annotation creation latency, AI job duration, PubSub broadcast fan-out
-- [ ] **15.6** Document measured numbers in `PERFORMANCE.md`
+- [x] **15.1** Lazy-load annotations per page — only fetch annotations for visible page range
+  - `PdfLive.Show` now keeps a lightweight index (`Annotations.list_annotation_index/2` — id, type, page, rect, inserted_at, visibility, user_id) for the whole resource and lazy-hydrates full bodies via `Annotations.list_annotations_for_pages/3` only for the visible-pages range. Footnote numbering switched to per-page so it stays stable through partial hydration. Filter chip + "X of Y" counts come from the index, so they never lie about content the actor hasn't scrolled to yet.
+- [x] **15.2** Annotation prefetch on scroll-near (one page ahead/behind)
+  - The Svelte canvas debounces (~120ms) the IntersectionObserver's visible-page set into a `pages_visible` event. The LV expands the reported range by ±1 page (`@prefetch_buffer`) before fetching. Already-loaded pages are diffed out so re-scrolling is a free no-op; the `handle_event` short-circuits when the range is identical AND nothing new is needed, so steady-state scroll doesn't churn the assigns.
+- [x] **15.3** Profile LiveView re-renders with `:telemetry` — kill any unnecessary re-renders
+  - `Studysync.Telemetry.DevLogger` attaches in dev only (`:dev_telemetry_logger?` flag). It listens to `[:phoenix, :live_view, :handle_event/:mount, :stop]` and the StudySync events from 15.5, logging only when an event blows past its threshold (50ms / 200ms / 75ms / 25ms). Audit pass shipped two short-circuits: `select_annotation`/`annotation_clicked` skip when the click hits the already-active note; `pages_visible` skips when the range hasn't changed and there's nothing to load.
+- [x] **15.4** Profile PDF rendering — confirm page virtualization is actually working
+  - The Svelte canvas's `IntersectionObserver` (root: `scrollEl`, `rootMargin: "1000px 0px"`) is the only path that calls `renderPage(num)`, gated by a `renderedPages` Set. Verified by inspecting the cache while scrolling a 100-page PDF — pages outside the band have empty placeholder divs but no canvas paint. Documented in `PERFORMANCE.md` §2.3.
+- [x] **15.5** Add basic `:telemetry` events for: annotation creation latency, AI job duration, PubSub broadcast fan-out
+  - `[:studysync, :annotations, :create, :stop]` (LV-side `:telemetry.span` around the Ash action, tagged with `type` + `outcome`); `[:studysync, :pubsub, :broadcast, :stop]` (every `broadcast_*` helper in `Annotations.PubSub`, `Activity.PubSub`, `Progress.PubSub`); `[:studysync, :ai, :answer, :stop]` registered as a stub for the Slice 11 worker. All three plus `phoenix.live_view.{mount,handle_event,handle_params}.stop.duration` are surfaced in `StudysyncWeb.Telemetry.metrics/0` so any reporter can attach without code changes.
+- [x] **15.6** Document measured numbers in `PERFORMANCE.md`
+  - Numbers captured via `priv/scripts/perf_pass.exs` against the dev DB (200 annotations, Apple Silicon). Annotation create p50=6.9ms / p99=21ms; page-load p50=14ms; index-load p50=8ms; PubSub broadcast <0.1ms — all well under CLAUDE.md §6's <100ms perceived-latency budget. The script is committed so the numbers can be re-measured after any hot-path change.
 
 ---
 
@@ -321,5 +344,9 @@ When a slice closes (all items checked), append a one-line entry here:
 - Slice 7 — Real-Time Collaboration — closed 2026-04-26 (7.8 manual verification pending)
 - Slice 8 — Activity Feed — closed 2026-04-26
 - Slice 10 — Annotation Types Beyond Comment — closed 2026-04-26
+- Slice 12 — Milestone Markers — closed 2026-04-27 (Slice 11 deferred)
+- Slice 13 — Rubber Stamps — closed 2026-04-27 (Slice 11 still deferred)
+- Slice 14 — Visibility & Privacy Polish — closed 2026-04-27 (Slice 11 still deferred)
+- Slice 15 — Performance Pass — closed 2026-04-27 (Slice 11 still deferred)
 - ...
 ```

@@ -18,6 +18,7 @@ defmodule Studysync.Activity do
   alias Studysync.Annotations.AnnotationComment
   alias Studysync.Library
   alias Studysync.Library.Resource
+  alias Studysync.Progress.RubberStamp
 
   require Ash.Query
 
@@ -106,6 +107,25 @@ defmodule Studysync.Activity do
     end
   end
 
+  @doc """
+  Build a single event for a freshly-applied rubber stamp (Slice 13).
+  Returns `{:error, :not_visible}` if the actor cannot read the parent
+  milestone's resource (which gates stamp visibility too).
+  """
+  @spec event_from_stamp(Ash.UUID.t(), keyword()) ::
+          {:ok, Event.t()} | {:error, :not_visible}
+  def event_from_stamp(stamp_id, opts) do
+    actor = Keyword.fetch!(opts, :actor)
+
+    with {:ok, stamp} when not is_nil(stamp) <-
+           Ash.get(RubberStamp, stamp_id, actor: actor, load: [:user, milestone: [:resource]]),
+         %{milestone: %{resource: resource} = milestone} when not is_nil(resource) <- stamp do
+      {:ok, stamp_to_event(stamp, milestone, resource)}
+    else
+      _ -> {:error, :not_visible}
+    end
+  end
+
   defp resources_in_workspace(workspace_id, actor) do
     Resource
     |> Ash.Query.filter(workspace_id: workspace_id)
@@ -162,6 +182,19 @@ defmodule Studysync.Activity do
       page_number: annotation && annotation.page_number,
       snippet: reply.body,
       inserted_at: reply.inserted_at
+    }
+  end
+
+  defp stamp_to_event(stamp, milestone, resource) do
+    %Event{
+      id: "stamp-#{stamp.id}",
+      type: :stamped,
+      actor_email: email(stamp.user),
+      resource_id: resource.id,
+      resource_title: resource.title,
+      page_number: milestone.page_number,
+      snippet: milestone.label,
+      inserted_at: stamp.inserted_at
     }
   end
 

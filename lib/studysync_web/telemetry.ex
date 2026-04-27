@@ -79,7 +79,41 @@ defmodule StudysyncWeb.Telemetry do
       summary("vm.memory.total", unit: {:byte, :kilobyte}),
       summary("vm.total_run_queue_lengths.total"),
       summary("vm.total_run_queue_lengths.cpu"),
-      summary("vm.total_run_queue_lengths.io")
+      summary("vm.total_run_queue_lengths.io"),
+
+      # StudySync — Slice 15.5 instrumentation
+      summary("studysync.annotations.create.stop.duration",
+        unit: {:native, :millisecond},
+        tags: [:type, :outcome],
+        description: "End-to-end Ash create latency for an annotation"
+      ),
+      summary("studysync.pubsub.broadcast.stop.duration",
+        unit: {:native, :millisecond},
+        tags: [:event],
+        description: "Phoenix.PubSub broadcast fan-out latency"
+      ),
+      # Slice 11 stub — fires once the AI worker lands.
+      summary("studysync.ai.answer.stop.duration",
+        unit: {:native, :millisecond},
+        tags: [:outcome],
+        description: "Anthropic call duration inside the Ask AI Oban worker"
+      ),
+
+      # Phoenix LiveView — Slice 15.3 audit signal. These are emitted by
+      # Phoenix.LiveView itself; we just opt into the metrics so the
+      # ConsoleReporter (or any future reporter) can surface them.
+      summary("phoenix.live_view.mount.stop.duration",
+        unit: {:native, :millisecond},
+        tags: [:view]
+      ),
+      summary("phoenix.live_view.handle_event.stop.duration",
+        unit: {:native, :millisecond},
+        tags: [:view, :event]
+      ),
+      summary("phoenix.live_view.handle_params.stop.duration",
+        unit: {:native, :millisecond},
+        tags: [:view]
+      )
     ]
   end
 

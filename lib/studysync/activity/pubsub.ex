@@ -41,13 +41,15 @@ defmodule Studysync.Activity.PubSub do
         :ok
 
       workspace_id ->
-        Phoenix.PubSub.broadcast_from!(
-          @pubsub,
-          self(),
-          topic(workspace_id),
-          {:activity_annotation_created,
-           %{annotation_id: annotation_id, workspace_id: workspace_id}}
-        )
+        span(topic(workspace_id), :activity_annotation_created, fn ->
+          Phoenix.PubSub.broadcast_from!(
+            @pubsub,
+            self(),
+            topic(workspace_id),
+            {:activity_annotation_created,
+             %{annotation_id: annotation_id, workspace_id: workspace_id}}
+          )
+        end)
     end
   end
 
@@ -62,12 +64,41 @@ defmodule Studysync.Activity.PubSub do
         :ok
 
       workspace_id ->
-        Phoenix.PubSub.broadcast_from!(
-          @pubsub,
-          self(),
-          topic(workspace_id),
-          {:activity_reply_created, %{reply_id: reply_id, workspace_id: workspace_id}}
-        )
+        span(topic(workspace_id), :activity_reply_created, fn ->
+          Phoenix.PubSub.broadcast_from!(
+            @pubsub,
+            self(),
+            topic(workspace_id),
+            {:activity_reply_created, %{reply_id: reply_id, workspace_id: workspace_id}}
+          )
+        end)
+    end
+  end
+
+  @doc """
+  Broadcast a stamp-applied activity event for the workspace the parent
+  resource belongs to (Slice 13).
+  """
+  def broadcast_stamp_applied(resource_id, milestone_id, stamp_id)
+      when is_binary(resource_id) and is_binary(milestone_id) and is_binary(stamp_id) do
+    case workspace_id_for_resource(resource_id) do
+      nil ->
+        :ok
+
+      workspace_id ->
+        span(topic(workspace_id), :activity_stamp_applied, fn ->
+          Phoenix.PubSub.broadcast_from!(
+            @pubsub,
+            self(),
+            topic(workspace_id),
+            {:activity_stamp_applied,
+             %{
+               stamp_id: stamp_id,
+               milestone_id: milestone_id,
+               workspace_id: workspace_id
+             }}
+          )
+        end)
     end
   end
 
@@ -78,5 +109,18 @@ defmodule Studysync.Activity.PubSub do
       {:ok, %{workspace_id: workspace_id}} -> workspace_id
       _ -> nil
     end
+  end
+
+  # Slice 15.5 — broadcast fan-out latency. Subscriber count isn't directly
+  # available from Phoenix.PubSub, so the metadata only carries topic + event.
+  defp span(topic, event, fun) do
+    :telemetry.span(
+      [:studysync, :pubsub, :broadcast],
+      %{topic: topic, event: event},
+      fn ->
+        result = fun.()
+        {result, %{topic: topic, event: event}}
+      end
+    )
   end
 end

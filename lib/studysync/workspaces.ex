@@ -82,6 +82,32 @@ defmodule Studysync.Workspaces do
       message: "is already a member of this workspace"
     }
 
+  @doc """
+  Returns `true` when `actor` is an active admin of `workspace_id`. Used by
+  LiveViews that gate admin-only UI (e.g. milestone placement in Slice 12).
+
+  This bypasses Ash authorization on read because we're reading the membership
+  to *decide* what UI to show — not to expose data — and the actor is always
+  asking about themselves.
+  """
+  def actor_admin?(_workspace_id, nil), do: false
+
+  def actor_admin?(workspace_id, %{id: actor_id}) do
+    Membership
+    |> Ash.Query.filter(
+      workspace_id == ^workspace_id and
+        user_id == ^actor_id and
+        role == :admin and
+        status == :active
+    )
+    |> Ash.read_one(authorize?: false)
+    |> case do
+      {:ok, nil} -> false
+      {:ok, _} -> true
+      _ -> false
+    end
+  end
+
   defp find_existing_membership(workspace_id, email) do
     user_id = lookup_user_id(email)
 

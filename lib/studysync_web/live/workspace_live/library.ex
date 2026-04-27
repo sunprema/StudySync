@@ -340,6 +340,19 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
     end
   end
 
+  def handle_info(
+        {:activity_stamp_applied, %{stamp_id: stamp_id, workspace_id: ws_id}},
+        socket
+      ) do
+    if ws_id == socket.assigns.workspace.id do
+      handle_activity(socket, fn ->
+        Activity.event_from_stamp(stamp_id, actor: socket.assigns.current_user)
+      end)
+    else
+      {:noreply, socket}
+    end
+  end
+
   defp handle_activity(socket, fetch_fun) do
     case fetch_fun.() do
       {:ok, event} ->

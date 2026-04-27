@@ -401,6 +401,210 @@ defmodule Studysync.AnnotationsTest do
     end
   end
 
+  describe "visibility policy matrix (Slice 14)" do
+    # Author × non-author × non-member crossed with private × workspace, on
+    # both the annotation read path and the comment read path. Reply *create*
+    # is also enforced by visibility — `ActorCanReplyToAnnotation` mirrors
+    # the annotation read rules — so the create matrix lives here too.
+
+    setup do
+      {owner, ws, resource} = setup_resource("vis-matrix-owner@example.com")
+      member = register_user("vis-matrix-member@example.com")
+
+      _ = Workspaces.invite_member!(ws.id, "vis-matrix-member@example.com", actor: owner)
+
+      [pending] =
+        Studysync.Workspaces.Membership
+        |> Ash.Query.filter(user_id == ^member.id)
+        |> Ash.read!(authorize?: false)
+
+      {:ok, _} = Workspaces.accept_invite(pending, actor: member)
+
+      stranger = register_user("vis-matrix-stranger@example.com")
+
+      {:ok, workspace_ann} =
+        Annotations.create_comment(
+          resource.id,
+          1,
+          @rect,
+          "shared snippet",
+          "shared body",
+          actor: owner
+        )
+
+      {:ok, private_ann} =
+        Annotations.create_comment(
+          resource.id,
+          1,
+          @rect,
+          "private snippet",
+          "private body",
+          %{visibility: :private},
+          actor: owner
+        )
+
+      {:ok, workspace_reply} =
+        Annotations.reply(workspace_ann.id, "shared reply", actor: owner)
+
+      {:ok, private_reply} =
+        Annotations.reply(private_ann.id, "private reply", actor: owner)
+
+      %{
+        owner: owner,
+        member: member,
+        stranger: stranger,
+        resource: resource,
+        workspace_ann: workspace_ann,
+        private_ann: private_ann,
+        workspace_reply: workspace_reply,
+        private_reply: private_reply
+      }
+    end
+
+    # ── annotation read matrix ────────────────────────────────────────────
+
+    test "author can read their own private annotation", ctx do
+      assert {:ok, %{id: id}} =
+               Annotations.get_annotation(ctx.private_ann.id, actor: ctx.owner)
+
+      assert id == ctx.private_ann.id
+    end
+
+    test "author can read their own workspace annotation", ctx do
+      assert {:ok, %{id: id}} =
+               Annotations.get_annotation(ctx.workspace_ann.id, actor: ctx.owner)
+
+      assert id == ctx.workspace_ann.id
+    end
+
+    test "non-author member can read a workspace annotation", ctx do
+      assert {:ok, %{id: id}} =
+               Annotations.get_annotation(ctx.workspace_ann.id, actor: ctx.member)
+
+      assert id == ctx.workspace_ann.id
+    end
+
+    test "non-author member cannot read a private annotation", ctx do
+      # `get_annotation` resolves via a `read` action with a `get_by`; when
+      # the row is filtered out by policy the action raises NotFound rather
+      # than returning the row, so the row is invisible (not just an empty
+      # detail page).
+      assert {:error, %Ash.Error.Invalid{errors: [%Ash.Error.Query.NotFound{} | _]}} =
+               Annotations.get_annotation(ctx.private_ann.id, actor: ctx.member)
+
+      ids =
+        Annotations.list_annotations!(
+          actor: ctx.member,
+          query: [filter: [resource_id: ctx.resource.id]]
+        )
+        |> Enum.map(& &1.id)
+
+      assert ctx.workspace_ann.id in ids
+      refute ctx.private_ann.id in ids
+    end
+
+    test "non-member cannot read a workspace annotation", ctx do
+      assert {:error, %Ash.Error.Invalid{errors: [%Ash.Error.Query.NotFound{} | _]}} =
+               Annotations.get_annotation(ctx.workspace_ann.id, actor: ctx.stranger)
+    end
+
+    test "non-member cannot read a private annotation", ctx do
+      assert {:error, %Ash.Error.Invalid{errors: [%Ash.Error.Query.NotFound{} | _]}} =
+               Annotations.get_annotation(ctx.private_ann.id, actor: ctx.stranger)
+    end
+
+    # ── reply read matrix ─────────────────────────────────────────────────
+
+    test "author can read replies on their own private annotation", ctx do
+      replies =
+        Annotations.list_replies!(
+          actor: ctx.owner,
+          query: [filter: [annotation_id: ctx.private_ann.id]]
+        )
+
+      assert Enum.map(replies, & &1.id) == [ctx.private_reply.id]
+    end
+
+    test "non-author member can read replies on a workspace annotation", ctx do
+      replies =
+        Annotations.list_replies!(
+          actor: ctx.member,
+          query: [filter: [annotation_id: ctx.workspace_ann.id]]
+        )
+
+      assert Enum.map(replies, & &1.id) == [ctx.workspace_reply.id]
+    end
+
+    test "non-author member cannot read replies on a private annotation", ctx do
+      replies =
+        Annotations.list_replies!(
+          actor: ctx.member,
+          query: [filter: [annotation_id: ctx.private_ann.id]]
+        )
+
+      assert replies == []
+    end
+
+    test "non-member cannot read replies on any annotation", ctx do
+      assert Annotations.list_replies!(
+               actor: ctx.stranger,
+               query: [filter: [annotation_id: ctx.workspace_ann.id]]
+             ) == []
+
+      assert Annotations.list_replies!(
+               actor: ctx.stranger,
+               query: [filter: [annotation_id: ctx.private_ann.id]]
+             ) == []
+    end
+
+    # ── reply create matrix ───────────────────────────────────────────────
+
+    test "author can reply to their own private annotation", ctx do
+      assert {:ok, _} = Annotations.reply(ctx.private_ann.id, "self-note", actor: ctx.owner)
+    end
+
+    test "non-author member can reply to a workspace annotation", ctx do
+      assert {:ok, _} =
+               Annotations.reply(ctx.workspace_ann.id, "i agree", actor: ctx.member)
+    end
+
+    test "non-author member cannot reply to a private annotation", ctx do
+      assert {:error, %Ash.Error.Forbidden{}} =
+               Annotations.reply(ctx.private_ann.id, "snooping", actor: ctx.member)
+    end
+
+    test "non-member cannot reply to any annotation", ctx do
+      assert {:error, %Ash.Error.Forbidden{}} =
+               Annotations.reply(ctx.workspace_ann.id, "intruder", actor: ctx.stranger)
+
+      assert {:error, %Ash.Error.Forbidden{}} =
+               Annotations.reply(ctx.private_ann.id, "intruder", actor: ctx.stranger)
+    end
+
+    # ── activity feed ─────────────────────────────────────────────────────
+
+    test "private annotations and their replies don't appear in the workspace activity feed for non-authors",
+         ctx do
+      events = Studysync.Activity.list_for_workspace(ctx.resource.workspace_id, actor: ctx.member)
+
+      ids = Enum.map(events, & &1.id)
+
+      assert "annotation-#{ctx.workspace_ann.id}" in ids
+      refute "annotation-#{ctx.private_ann.id}" in ids
+      assert "reply-#{ctx.workspace_reply.id}" in ids
+      refute "reply-#{ctx.private_reply.id}" in ids
+    end
+
+    test "the author still sees their private annotations in the activity feed", ctx do
+      events = Studysync.Activity.list_for_workspace(ctx.resource.workspace_id, actor: ctx.owner)
+
+      ids = Enum.map(events, & &1.id)
+
+      assert "annotation-#{ctx.private_ann.id}" in ids
+      assert "reply-#{ctx.private_reply.id}" in ids
+    end
+  end
+
   describe "PubSub broadcasts (Slice 7)" do
     # Broadcasts use `broadcast_from!(self())` — the originating process is
     # skipped on purpose so an optimistic-UI insert isn't doubled by the

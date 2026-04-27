@@ -36,7 +36,15 @@ defmodule Studysync.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Studysync.Supervisor]
-    Supervisor.start_link(children, opts)
+    result = Supervisor.start_link(children, opts)
+
+    # Slice 15.3 — log slow LV / annotation / PubSub events in dev only.
+    # The handler is detached automatically when the application stops.
+    if Application.get_env(:studysync, :dev_telemetry_logger?, false) do
+      Studysync.Telemetry.DevLogger.attach()
+    end
+
+    result
   end
 
   # Tell Phoenix to update the endpoint configuration

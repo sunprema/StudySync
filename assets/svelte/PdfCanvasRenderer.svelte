@@ -12,6 +12,16 @@
   //   total_pages          : number  — page count from the persisted resource
   //   annotations          : array   — [{ id, number, page, rect: { x, y, width, height } }]
   //                                     rect coordinates are 0..1 normalized to the page
+  //   milestone_markers    : array   — [{ id, page, position: { x, y }, label }]
+  //                                     position is 0..1 normalized to the page
+  //   milestone_mode       : bool    — when true, clicking a page emits
+  //                                    `milestone_placed` instead of selecting text
+  //   rubber_stamps        : array   — [{ id, milestone_id, user_id, email }]
+  //                                     drives the "X / N readers" + avatar
+  //                                     cluster on the milestone popover and the
+  //                                     "have I stamped?" check.
+  //   current_user_id      : string  — actor id; compared against rubber_stamps[].user_id
+  //   total_readers        : number  — workspace member count, denominator for X/N
   //   active_annotation_id : string  — id of the focused annotation; drives marker
   //                                     highlight and scroll-to-page on change
   //
@@ -20,10 +30,23 @@
   //                        the floating menu options. `type` ∈ "comment" |
   //                        "question" | "puzzle".
   //   annotation_clicked → { id } when the user clicks a marker in the prose
+  //   milestone_placed   → { page, position: { x, y } } when an admin in
+  //                        milestone_mode clicks a page to drop a checkpoint.
+  //   apply_stamp        → { milestone_id } when the user confirms a stamp from
+  //                        the milestone popover.
+  //   pages_visible      → { first, last } emitted (debounced) whenever the set
+  //                        of pages intersecting the viewport changes. Drives
+  //                        lazy hydration of annotation bodies on the LV side
+  //                        (Slice 15.1/15.2).
   let {
     file_url,
     total_pages = 0,
     annotations = [],
+    milestone_markers = [],
+    milestone_mode = false,
+    rubber_stamps = [],
+    current_user_id = null,
+    total_readers = 0,
     active_annotation_id = null,
   } = $props();
 
@@ -38,6 +61,9 @@
   let firstPageSize = $state(null);
   // Floating selection menu — { x, y, text, page, rect } or null.
   let selectionMenu = $state(null);
+  // Milestone popover — { x, y, milestone_id } or null. Anchored next to the
+  // marker the user clicked; shows X/N readers + avatar cluster + stamp button.
+  let milestonePopover = $state(null);
   // Hover-linking state — set by document-level "studysync:annotation-hover"
   // events dispatched from the margin column. Pure client-side; no LV roundtrip.
   let hoveredAnnotationId = $state(null);
@@ -50,6 +76,13 @@
   // Render-cache for canvases. Off $state so we don't trigger Svelte
   // re-renders on every page paint.
   const renderedPages = new Set();
+  // Slice 15.1/15.2 — track which pages intersect the viewport (incl.
+  // 1000px rootMargin) and report the range to LV so it can lazy-hydrate
+  // annotation bodies for the matching pages. Debounced to coalesce rapid
+  // scroll bursts into a single LV round-trip.
+  const visiblePages = new Set();
+  let visiblePagesDebounce = null;
+  let lastReportedRange = null;
 
   // Internal PDF.js scale at user zoom = 100%. Tuned for retina readability.
   const BASE_INTERNAL_SCALE = 1.75;
@@ -71,6 +104,41 @@
       map.set(a.page, list);
     }
     return map;
+  });
+
+  const milestonesByPage = $derived.by(() => {
+    const map = new Map();
+    for (const m of milestone_markers || []) {
+      const list = map.get(m.page) || [];
+      list.push(m);
+      map.set(m.page, list);
+    }
+    return map;
+  });
+
+  // Stamps grouped by milestone — drives the per-milestone popover counts and
+  // avatar cluster (Slice 13). Recomputed only when the prop changes.
+  const stampsByMilestone = $derived.by(() => {
+    const map = new Map();
+    for (const s of rubber_stamps || []) {
+      const list = map.get(s.milestone_id) || [];
+      list.push(s);
+      map.set(s.milestone_id, list);
+    }
+    return map;
+  });
+
+  const popoverContext = $derived.by(() => {
+    if (!milestonePopover) return null;
+    const milestone = (milestone_markers || []).find(
+      (m) => m.id === milestonePopover.milestone_id,
+    );
+    if (!milestone) return null;
+    const stamps = stampsByMilestone.get(milestone.id) || [];
+    const stampedByMe =
+      current_user_id != null &&
+      stamps.some((s) => s.user_id === current_user_id);
+    return { milestone, stamps, stampedByMe };
   });
 
   const ZOOM_STEPS = [75, 100, 125, 150, 175, 200];
@@ -103,6 +171,7 @@
     if (observer) observer.disconnect();
     if (pdfDoc) pdfDoc.destroy?.();
     if (pulseTimer) clearTimeout(pulseTimer);
+    if (visiblePagesDebounce) clearTimeout(visiblePagesDebounce);
   });
 
   // Hover linking: the margin column dispatches a custom DOM event when a
@@ -145,6 +214,7 @@
 
     observer = new IntersectionObserver(
       (entries) => {
+        let changed = false;
         for (const entry of entries) {
           const num = Number(entry.target.dataset.pageNum);
           if (entry.isIntersecting) {
@@ -152,8 +222,15 @@
             if (!renderedPages.has(num)) {
               renderPage(num);
             }
+            if (!visiblePages.has(num)) {
+              visiblePages.add(num);
+              changed = true;
+            }
+          } else if (visiblePages.delete(num)) {
+            changed = true;
           }
         }
+        if (changed) scheduleVisiblePagesReport();
       },
       { root: scrollEl, rootMargin: "1000px 0px", threshold: 0 },
     );
@@ -202,6 +279,13 @@
     if (!scrollEl) return;
 
     const handler = () => {
+      // While in milestone-placement mode, the page is "click to drop"
+      // rather than "select to annotate" — keep the floating menu hidden.
+      if (milestone_mode) {
+        selectionMenu = null;
+        return;
+      }
+
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) {
         selectionMenu = null;
@@ -252,6 +336,32 @@
     document.addEventListener("selectionchange", handler);
     return () => document.removeEventListener("selectionchange", handler);
   });
+
+  // Slice 15.1/15.2 — push the current visible-page range to LV.
+  // Debounced (120ms) so a fast scroll doesn't fire on every IO callback;
+  // and de-duped so we don't ship the same range twice in a row.
+  function scheduleVisiblePagesReport() {
+    if (visiblePagesDebounce) clearTimeout(visiblePagesDebounce);
+    visiblePagesDebounce = setTimeout(() => {
+      visiblePagesDebounce = null;
+      if (visiblePages.size === 0) return;
+      let first = Infinity;
+      let last = -Infinity;
+      for (const p of visiblePages) {
+        if (p < first) first = p;
+        if (p > last) last = p;
+      }
+      if (
+        lastReportedRange &&
+        lastReportedRange.first === first &&
+        lastReportedRange.last === last
+      ) {
+        return;
+      }
+      lastReportedRange = { first, last };
+      pushEvent("pages_visible", { first, last });
+    }, 120);
+  }
 
   async function renderPage(num) {
     if (renderedPages.has(num)) return;
@@ -307,6 +417,91 @@
     e.preventDefault();
     e.stopPropagation();
     pushEvent("annotation_clicked", { id });
+  }
+
+  // Admin-only milestone placement (Slice 12). When `milestone_mode` is true
+  // a transparent <button> overlays each page; clicking it normalises the
+  // click point against the page rect (the button's parent) and ships
+  // `{ page, position }` to LiveView for the label form. The overlay also
+  // prevents text selection while placing so the floating "Add comment" menu
+  // never competes with placement clicks.
+  function onPageClick(e, pageNum) {
+    if (!milestone_mode) return;
+
+    const pageEl = e.currentTarget.closest("[data-page-num]");
+    if (!pageEl) return;
+    const rect = pageEl.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    pushEvent("milestone_placed", {
+      page: pageNum,
+      position: {
+        x: (e.clientX - rect.left) / rect.width,
+        y: (e.clientY - rect.top) / rect.height,
+      },
+    });
+  }
+
+  // Click a milestone marker → open the popover anchored to the marker.
+  // Coordinates are viewport-fixed so the popover stays put while the user
+  // skims the popover content; closing on outside click resets state.
+  function onMilestoneMarkerClick(e, milestone_id) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (milestone_mode) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+
+    milestonePopover = {
+      x: rect.right + 8,
+      y: rect.top,
+      milestone_id,
+    };
+  }
+
+  function closeMilestonePopover() {
+    milestonePopover = null;
+  }
+
+  function confirmStamp(e) {
+    e?.preventDefault?.();
+    if (!popoverContext || popoverContext.stampedByMe) return;
+    pushEvent("apply_stamp", { milestone_id: popoverContext.milestone.id });
+    milestonePopover = null;
+  }
+
+  // Close the popover on Escape or when the user clicks outside it.
+  $effect(() => {
+    if (!milestonePopover) return;
+
+    const onKey = (e) => {
+      if (e.key === "Escape") closeMilestonePopover();
+    };
+    const onDocClick = (e) => {
+      const popoverEl = document.querySelector(".milestone-popover");
+      const markerEl = document.querySelector(
+        `[data-milestone-id="${milestonePopover.milestone_id}"]`,
+      );
+      if (popoverEl?.contains(e.target)) return;
+      if (markerEl?.contains(e.target)) return;
+      closeMilestonePopover();
+    };
+
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDocClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDocClick);
+    };
+  });
+
+  function emailInitials(email) {
+    if (!email) return "·";
+    const local = String(email).split("@")[0] || "";
+    return local.slice(0, 2).toUpperCase();
   }
 
   function commitSelection(e, type) {
@@ -377,6 +572,7 @@
     {#each pages as p (p.pageNum)}
       <div
         class="page"
+        class:is-placing={milestone_mode}
         data-page-num={p.pageNum}
         style:width="{pageDisplayWidth}px"
         style:height="{pageDisplayHeight}px"
@@ -384,6 +580,14 @@
       >
         <canvas bind:this={p.canvas} aria-label="Page {p.pageNum}"></canvas>
         <div class="textLayer" bind:this={p.textLayer}></div>
+        {#if milestone_mode}
+          <button
+            type="button"
+            class="milestone-placer"
+            aria-label="Place a milestone on page {p.pageNum}"
+            onclick={(e) => onPageClick(e, p.pageNum)}
+          ></button>
+        {/if}
         <div class="annotation-overlay">
           {#each annotationsByPage.get(p.pageNum) || [] as a (a.id)}
             <button
@@ -402,10 +606,81 @@
               <sup>{a.number}</sup>
             </button>
           {/each}
+
+          {#each milestonesByPage.get(p.pageNum) || [] as m (m.id)}
+            {@const stampCount = (stampsByMilestone.get(m.id) || []).length}
+            {@const stampedByMe =
+              current_user_id != null &&
+              (stampsByMilestone.get(m.id) || []).some(
+                (s) => s.user_id === current_user_id,
+              )}
+            <button
+              type="button"
+              class="milestone-marker"
+              class:is-stamped={stampedByMe}
+              data-milestone-id={m.id}
+              style:left="{(m.position?.x ?? 0) * 100}%"
+              style:top="{(m.position?.y ?? 0) * 100}%"
+              aria-label={`Milestone: ${m.label} · ${stampCount} of ${total_readers} readers`}
+              title={m.label}
+              onclick={(e) => onMilestoneMarkerClick(e, m.id)}
+            >
+              <span class="milestone-flag" aria-hidden="true"></span>
+              <span class="milestone-label">{m.label}</span>
+              {#if stampCount > 0}
+                <span class="milestone-count num">{stampCount}</span>
+              {/if}
+            </button>
+          {/each}
         </div>
       </div>
     {/each}
   </div>
+
+  {#if milestonePopover && popoverContext}
+    <div
+      class="milestone-popover"
+      style:left="{milestonePopover.x}px"
+      style:top="{milestonePopover.y}px"
+      role="dialog"
+      aria-label={`Milestone: ${popoverContext.milestone.label}`}
+    >
+      <p class="popover-label">{popoverContext.milestone.label}</p>
+      <p class="popover-meta">
+        <span class="num">{popoverContext.stamps.length}</span>
+        <span> / </span>
+        <span class="num">{total_readers}</span>
+        <span> readers</span>
+      </p>
+
+      {#if popoverContext.stamps.length > 0}
+        <ul class="popover-avatars" aria-label="Readers who've stamped">
+          {#each popoverContext.stamps as s (s.id)}
+            <li
+              class="popover-avatar"
+              class:is-self={current_user_id != null &&
+                s.user_id === current_user_id}
+              title={s.email || "unknown"}
+            >
+              {emailInitials(s.email)}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      {#if popoverContext.stampedByMe}
+        <p class="popover-stamped">Stamped by you</p>
+      {:else}
+        <button
+          type="button"
+          class="popover-stamp-btn"
+          onmousedown={confirmStamp}
+        >
+          Stamp this milestone
+        </button>
+      {/if}
+    </div>
+  {/if}
 
   {#if selectionMenu}
     <div
@@ -528,6 +803,35 @@
     position: relative;
   }
 
+  .page.is-placing {
+    cursor: crosshair;
+  }
+
+  .page.is-placing :global(.textLayer) {
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* Transparent overlay button — only present while in milestone-placement
+     mode. Sits above the text layer / annotation overlay so its click wins,
+     but the canvas paints through. Inheriting the page's crosshair cursor
+     keeps the affordance consistent. */
+  .milestone-placer {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: crosshair;
+  }
+
+  .milestone-placer:focus-visible {
+    outline: 2px solid var(--color-terracotta);
+    outline-offset: -2px;
+  }
+
   .page canvas {
     display: block;
     width: 100%;
@@ -629,6 +933,190 @@
       box-shadow: 0 0 0 14px color-mix(in srgb, var(--color-terracotta) 0%, transparent);
       transform: translate(-2px, -50%) scale(1);
     }
+  }
+
+  /* Milestone markers (Slice 12) — admin-placed checkpoints. Rendered as a
+     small terracotta flag on a vertical stem with a mono-caps label flag.
+     Visually distinct from annotation footnote markers so a reader can read
+     the difference at a glance: annotations are quiet superscripts in the
+     prose; milestones are flags planted alongside it.
+     Clickable in Slice 13 — opens the stamp popover. */
+  .milestone-marker {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    display: flex;
+    align-items: flex-end;
+    pointer-events: auto;
+    z-index: 3;
+    line-height: 1;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .milestone-marker:focus-visible {
+    outline: 1px solid var(--color-terracotta);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .milestone-marker.is-stamped .milestone-flag,
+  .milestone-marker.is-stamped .milestone-flag::before {
+    background: color-mix(in srgb, var(--color-terracotta) 70%, var(--color-ink));
+  }
+
+  .milestone-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    margin-left: 0.3rem;
+    padding: 0 0.3rem;
+    margin-bottom: -0.2rem;
+    border-radius: 999px;
+    background: var(--color-terracotta);
+    color: var(--color-paper);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .milestone-flag {
+    display: inline-block;
+    width: 2px;
+    height: 22px;
+    background: var(--color-terracotta);
+    margin-right: -1px;
+    flex-shrink: 0;
+  }
+
+  .milestone-flag::before {
+    content: "";
+    display: block;
+    width: 10px;
+    height: 8px;
+    background: var(--color-terracotta);
+    transform: translate(2px, 0);
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+  }
+
+  .milestone-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--color-terracotta);
+    background: color-mix(in srgb, var(--color-paper) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-terracotta) 35%, transparent);
+    padding: 0.15rem 0.4rem;
+    margin-left: 0.4rem;
+    margin-bottom: -0.15rem;
+    border-radius: 2px;
+    white-space: nowrap;
+    max-width: 16rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Milestone popover (Slice 13) — small dialog anchored to the marker the
+     user clicked. Shows X/N readers, the avatar cluster of stampers, and
+     either a stamp button or a "Stamped by you" indicator. */
+  .milestone-popover {
+    position: fixed;
+    z-index: 50;
+    background: var(--color-paper);
+    border: 1px solid var(--color-paper-2);
+    box-shadow: 0 2px 8px rgba(42, 37, 33, 0.08);
+    padding: 0.75rem 0.85rem;
+    border-radius: 2px;
+    min-width: 14rem;
+    max-width: 18rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .popover-label {
+    font-family: var(--font-serif);
+    color: var(--color-ink);
+    font-size: 0.95rem;
+    line-height: 1.25;
+    margin: 0;
+  }
+
+  .popover-meta {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--color-ink-soft);
+    margin: 0;
+  }
+
+  .popover-meta .num {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-terracotta);
+  }
+
+  .popover-avatars {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .popover-avatar {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 999px;
+    background: var(--color-paper-2);
+    color: var(--color-ink-soft);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .popover-avatar.is-self {
+    background: var(--color-terracotta);
+    color: var(--color-paper);
+  }
+
+  .popover-stamped {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--color-terracotta);
+    border-top: 1px solid var(--color-paper-2);
+    margin: 0;
+    padding-top: 0.55rem;
+  }
+
+  .popover-stamp-btn {
+    border: 1px solid var(--color-terracotta);
+    background: var(--color-terracotta);
+    color: var(--color-paper);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: opacity 0.12s ease;
+  }
+
+  .popover-stamp-btn:hover {
+    opacity: 0.9;
   }
 
   .selection-menu {

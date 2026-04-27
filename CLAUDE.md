@@ -68,15 +68,20 @@ This is the only API surface between the two worlds. Keep it small and stable.
 - `file_url` — auth-gated URL the canvas fetches the PDF from (added Slice 3)
 - `total_pages` — page count from the persisted resource, used for the indicator before PDF.js finishes loading (added Slice 3)
 - `annotations[]`
-- `milestone_markers[]`
-- `rubber_stamps[]`
+- `milestone_markers[]` — `[{ id, page, position: { x, y }, label }]`, position normalized 0..1 to the page (added Slice 12)
+- `milestone_mode` — boolean; when true, clicking a page emits `milestone_placed` instead of opening the selection menu. Admin-only path. (added Slice 12)
+- `rubber_stamps[]` — `[{ id, milestone_id, user_id, email }]` — every stamp visible to the actor on this resource. The canvas uses it to render the per-milestone "X / N readers" popover and to know whether the current user has already stamped. (added Slice 13)
+- `current_user_id` — UUID of the signed-in actor. The canvas compares against `rubber_stamps[].user_id` to decide whether to show the stamp button or a "Stamped" indicator on the milestone popover. (added Slice 13)
+- `total_readers` — workspace active-member count, used as the denominator in the "X / N readers" label on the milestone popover. (added Slice 13)
 - `active_annotation_id`
 
 **Events (Svelte → LiveView):**
 
 - `text_selected` → `{ text, page, rect, type }` — `type` ∈ `"comment" | "question" | "puzzle"` (added Slice 10)
 - `annotation_clicked` → `{ id }`
-- `apply_stamp` → `{ milestone_id }`
+- `milestone_placed` → `{ page, position: { x, y } }` — fired in `milestone_mode` when an admin clicks a page (added Slice 12)
+- `apply_stamp` → `{ milestone_id }` — fired when the user confirms a stamp from the per-milestone popover. The LiveView authorises through Ash, applies the stamp, and broadcasts (`:stamp_applied`) so all open readers re-fetch and patch. (added Slice 13)
+- `pages_visible` → `{ first, last }` — debounced (~120ms) report of the page range currently intersecting the viewport (with the canvas's 1000px rootMargin). The LiveView lazy-hydrates annotation bodies for that range ±1 page; previously-loaded pages aren't re-queried. (added Slice 15)
 
 If you need a new prop or event, **add it to this contract in the same PR** and update §4.3 here. Don't smuggle in undocumented channels.
 

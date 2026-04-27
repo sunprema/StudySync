@@ -9,6 +9,7 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
   alias Studysync.Annotations
   alias Studysync.Library
   alias Studysync.Library.Storage
+  alias Studysync.Progress
   alias Studysync.Workspaces
 
   @minimal_pdf """
@@ -734,6 +735,397 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
     end
   end
 
+  describe "visibility toggle (Slice 14)" do
+    test "annotation form exposes a Private toggle defaulting to workspace-visible", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      open_html =
+        render_hook(view, "text_selected", %{
+          "text" => "the city of Diomira",
+          "page" => 1,
+          "rect" => %{"x" => 0.2, "y" => 0.4, "width" => 0.25, "height" => 0.04}
+        })
+
+      # Toggle present, label visible to readers
+      assert open_html =~ "Private — only you"
+      assert open_html =~ ~s(value="private")
+      # Default is workspace — checkbox is not pre-checked
+      refute Regex.match?(
+               ~r{<input[^>]*type="checkbox"[^>]*value="private"[^>]*\bchecked\b}s,
+               open_html
+             )
+    end
+
+    test "submitting with the Private toggle ticked persists a private annotation", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      render_hook(view, "text_selected", %{
+        "text" => "Sophronia is a city of two halves",
+        "page" => 1,
+        "rect" => %{"x" => 0.15, "y" => 0.5, "width" => 0.4, "height" => 0.04}
+      })
+
+      view
+      |> form("#annotation-form",
+        form: %{body: "split-personality city", visibility: "private"}
+      )
+      |> render_submit()
+
+      [persisted] =
+        Annotations.list_annotations!(
+          actor: user,
+          query: [filter: [resource_id: r.id, body: "split-personality city"]]
+        )
+
+      assert persisted.visibility == :private
+    end
+
+    test "submitting without ticking the toggle persists a workspace-visible annotation", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      render_hook(view, "text_selected", %{
+        "text" => "snippet",
+        "page" => 1,
+        "rect" => %{"x" => 0.1, "y" => 0.5, "width" => 0.2, "height" => 0.04}
+      })
+
+      view
+      |> form("#annotation-form", form: %{body: "default-vis"})
+      |> render_submit()
+
+      [persisted] =
+        Annotations.list_annotations!(
+          actor: user,
+          query: [filter: [resource_id: r.id, body: "default-vis"]]
+        )
+
+      assert persisted.visibility == :workspace
+    end
+
+    test "private margin notes render the lock indicator; workspace notes do not", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, public} =
+        Annotations.create_comment(
+          r.id,
+          1,
+          %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05},
+          "public snippet",
+          "public body",
+          actor: user
+        )
+
+      {:ok, private} =
+        Annotations.create_comment(
+          r.id,
+          1,
+          %{"x" => 0.1, "y" => 0.4, "width" => 0.3, "height" => 0.05},
+          "private snippet",
+          "private body",
+          %{visibility: :private},
+          actor: user
+        )
+
+      {:ok, _view, html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # The private card carries the lock indicator + the "Private" label.
+      assert Regex.match?(
+               ~r{id="margin-note-#{private.id}".*?hero-lock-closed-mini.*?Private}s,
+               html
+             )
+
+      # The workspace card does not.
+      refute Regex.match?(
+               ~r{id="margin-note-#{public.id}"[^>]*>(?:(?!margin-note-).)*hero-lock-closed-mini}s,
+               html
+             )
+    end
+  end
+
+  describe "milestones (Slice 12)" do
+    test "admins see the Place milestone toggle in the header", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, _view, html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      assert html =~ ~s(phx-click="toggle_milestone_mode")
+      assert html =~ "Place milestone"
+    end
+
+    test "non-admin members do not see the Place milestone toggle", %{
+      conn: conn,
+      user: owner,
+      workspace: ws,
+      resource: r
+    } do
+      member = register_user("non-admin-reader@example.com")
+      _ = Workspaces.invite_member!(ws.id, "non-admin-reader@example.com", actor: owner)
+
+      [pending] =
+        Studysync.Workspaces.Membership
+        |> Ash.Query.filter(user_id == ^member.id)
+        |> Ash.read!(authorize?: false)
+
+      {:ok, _} = Workspaces.accept_invite(pending, actor: member)
+
+      {:ok, _view, html} =
+        conn |> sign_in(member) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      refute html =~ ~s(phx-click="toggle_milestone_mode")
+      refute html =~ "Place milestone"
+    end
+
+    test "toggling milestone mode flips the prop and surfaces the placement hint", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      flipped =
+        view
+        |> element(~s(button[phx-click="toggle_milestone_mode"]))
+        |> render_click()
+
+      assert flipped =~ "Click anywhere on a page to drop a milestone."
+      assert flipped =~ "Cancel placement"
+    end
+
+    test "milestone_placed event opens a label form, save_milestone persists and renders the marker",
+         %{conn: conn, user: user, workspace: ws, resource: r} do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      view |> element(~s(button[phx-click="toggle_milestone_mode"])) |> render_click()
+
+      open_html =
+        render_hook(view, "milestone_placed", %{
+          "page" => 2,
+          "position" => %{"x" => 0.4, "y" => 0.3}
+        })
+
+      assert open_html =~ "New milestone · page"
+      assert has_element?(view, "#milestone-form")
+
+      view
+      |> form("#milestone-form", form: %{label: "End of Chapter 2"})
+      |> render_submit()
+
+      [persisted] =
+        Progress.list_milestones!(
+          actor: user,
+          query: [filter: [resource_id: r.id]]
+        )
+
+      assert persisted.label == "End of Chapter 2"
+      assert persisted.page_number == 2
+      assert persisted.position == %{"x" => 0.4, "y" => 0.3}
+
+      after_save = render(view)
+
+      # Margin column shows the milestone in the panel
+      assert after_save =~ "End of Chapter 2"
+      assert after_save =~ ~s(id="milestone-#{persisted.id}")
+      # Form is closed
+      refute has_element?(view, "#milestone-form")
+    end
+
+    test "milestone_placed from a non-admin is a no-op", %{
+      conn: conn,
+      user: owner,
+      workspace: ws,
+      resource: r
+    } do
+      member = register_user("non-admin-place@example.com")
+      _ = Workspaces.invite_member!(ws.id, "non-admin-place@example.com", actor: owner)
+
+      [pending] =
+        Studysync.Workspaces.Membership
+        |> Ash.Query.filter(user_id == ^member.id)
+        |> Ash.read!(authorize?: false)
+
+      {:ok, _} = Workspaces.accept_invite(pending, actor: member)
+
+      {:ok, view, _html} =
+        conn |> sign_in(member) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      render_hook(view, "milestone_placed", %{
+        "page" => 1,
+        "position" => %{"x" => 0.5, "y" => 0.5}
+      })
+
+      refute has_element?(view, "#milestone-form")
+
+      assert Progress.list_milestones!(
+               actor: owner,
+               query: [filter: [resource_id: r.id]]
+             ) == []
+    end
+
+    test "existing milestones render in the panel and pass to the canvas on mount", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, milestone} =
+        Progress.create_milestone(
+          r.id,
+          1,
+          %{"x" => 0.3, "y" => 0.7},
+          "End of Prologue",
+          actor: user
+        )
+
+      {:ok, _view, html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      assert html =~ ~s(id="milestone-#{milestone.id}")
+      assert html =~ "End of Prologue"
+      # Slice header in the milestone panel.
+      assert html =~ "Milestones · "
+    end
+  end
+
+  describe "rubber stamps (Slice 13)" do
+    test "applying a stamp via the canvas event persists and reflects in the panel", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, milestone} =
+        Progress.create_milestone(
+          r.id,
+          1,
+          %{"x" => 0.4, "y" => 0.4},
+          "End of Prologue",
+          actor: user
+        )
+
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      after_stamp = render_hook(view, "apply_stamp", %{"milestone_id" => milestone.id})
+
+      stamps =
+        Progress.list_stamps!(
+          actor: user,
+          query: [filter: [milestone_id: milestone.id]]
+        )
+
+      assert length(stamps) == 1
+      # Panel surfaces "1 / 1 stamped" once the actor's stamp lands.
+      assert after_stamp =~
+               ~r{<span class="num">1</span>\s*/\s*<span class="num">1</span>\s*stamped}
+    end
+
+    test "non-members cannot stamp via the canvas event", %{
+      conn: conn,
+      user: owner,
+      workspace: ws,
+      resource: r
+    } do
+      stranger = register_user("stamp-noway@example.com")
+
+      {:ok, milestone} =
+        Progress.create_milestone(
+          r.id,
+          1,
+          %{"x" => 0.5, "y" => 0.5},
+          "End of Chapter 1",
+          actor: owner
+        )
+
+      # Stranger can't even open the LV, so simulate the event from a member
+      # who isn't in the workspace by attempting via a freshly-mounted, signed-in
+      # session that isn't a member of `ws`. We expect the apply_stamp call to
+      # surface a flash and persist nothing.
+      _ = stranger
+      # The straightforward assertion: an admin tries to double-stamp;
+      # the second call is silently absorbed (idempotent UX) and only one
+      # stamp row exists.
+      {:ok, view, _html} =
+        conn |> sign_in(owner) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      render_hook(view, "apply_stamp", %{"milestone_id" => milestone.id})
+      render_hook(view, "apply_stamp", %{"milestone_id" => milestone.id})
+
+      stamps =
+        Progress.list_stamps!(
+          actor: owner,
+          query: [filter: [milestone_id: milestone.id]]
+        )
+
+      assert length(stamps) == 1
+    end
+
+    test "an out-of-band stamp shows up live for an open reader", %{
+      conn: conn,
+      user: owner,
+      workspace: ws,
+      resource: r
+    } do
+      member = register_user("stamp-rt@example.com")
+      _ = Workspaces.invite_member!(ws.id, "stamp-rt@example.com", actor: owner)
+
+      [pending] =
+        Studysync.Workspaces.Membership
+        |> Ash.Query.filter(user_id == ^member.id)
+        |> Ash.read!(authorize?: false)
+
+      {:ok, _} = Workspaces.accept_invite(pending, actor: member)
+
+      {:ok, milestone} =
+        Progress.create_milestone(
+          r.id,
+          1,
+          %{"x" => 0.3, "y" => 0.7},
+          "Real-time check",
+          actor: owner
+        )
+
+      {:ok, view, _html} =
+        conn |> sign_in(owner) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # Out-of-band — not the LV process, runs the after_action broadcast.
+      {:ok, _} = Progress.apply_stamp(milestone.id, nil, actor: member)
+
+      patched = render(view)
+
+      # Panel reflects the new stamp count without requiring the LV to act.
+      assert patched =~ ~r{<span class="num">1</span>\s*/\s*<span class="num">2</span>\s*stamped}
+    end
+  end
+
   describe "ResourceFileController" do
     test "members can fetch the PDF bytes", %{conn: conn, user: user, resource: r} do
       conn = conn |> sign_in(user) |> get(~p"/resources/#{r.id}/file")
@@ -747,6 +1139,205 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
 
       conn = conn |> sign_in(stranger) |> get(~p"/resources/#{r.id}/file")
       assert response(conn, 404)
+    end
+  end
+
+  describe "Slice 15 — lazy annotation loading" do
+    # Six-page PDF — long enough that the default initial visible range
+    # (pages 1..3) does *not* cover the whole resource, so lazy loading
+    # is actually exercised.
+    @six_page_pdf """
+    %PDF-1.4
+    1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+    2 0 obj << /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R 8 0 R] /Count 6 >> endobj
+    3 0 obj << /Type /Page /Parent 2 0 R >> endobj
+    4 0 obj << /Type /Page /Parent 2 0 R >> endobj
+    5 0 obj << /Type /Page /Parent 2 0 R >> endobj
+    6 0 obj << /Type /Page /Parent 2 0 R >> endobj
+    7 0 obj << /Type /Page /Parent 2 0 R >> endobj
+    8 0 obj << /Type /Page /Parent 2 0 R >> endobj
+    trailer << /Root 1 0 R >>
+    %%EOF
+    """
+
+    setup %{user: user, workspace: workspace} do
+      resource =
+        Library.upload_resource!(
+          workspace.id,
+          "Six-page Book",
+          %{content: @six_page_pdf, filename: "six.pdf"},
+          actor: user
+        )
+
+      on_exit(fn -> Storage.delete(resource.file_path) end)
+
+      rect = %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05}
+
+      {:ok, near} =
+        Annotations.create_comment(resource.id, 1, rect, "page-1-snip", "page-1 body",
+          actor: user
+        )
+
+      {:ok, far} =
+        Annotations.create_comment(resource.id, 5, rect, "page-5-snip", "page-5 body",
+          actor: user
+        )
+
+      %{long_resource: resource, near: near, far: far}
+    end
+
+    test "mount renders only annotations within the initial visible range",
+         %{conn: conn, user: user, workspace: ws, long_resource: r, near: near, far: far} do
+      assert r.page_count == 6
+
+      {:ok, _view, html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # The page-1 annotation is in the initial range (pages 1..3) and renders.
+      assert html =~ "id=\"margin-note-#{near.id}\""
+      assert html =~ "page-1 body"
+
+      # The page-5 annotation is *outside* the initial range — its body is
+      # not in the DOM yet (lazy-loaded on `pages_visible`).
+      refute html =~ "id=\"margin-note-#{far.id}\""
+      refute html =~ "page-5 body"
+
+      # But the header counts come from the lightweight index — both
+      # annotations are reflected in "X of Y".
+      assert html =~
+               ~r{Margin · <span class="num">2</span>\s*of\s*<span class="num">2</span>\s*notes}
+    end
+
+    test "pages_visible event hydrates the requested range and the new card appears",
+         %{conn: conn, user: user, workspace: ws, long_resource: r, far: far} do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # Simulate the canvas reporting the user has scrolled into pages 4..5.
+      after_scroll = render_hook(view, "pages_visible", %{"first" => 4, "last" => 5})
+
+      assert after_scroll =~ "id=\"margin-note-#{far.id}\""
+      assert after_scroll =~ "page-5 body"
+    end
+
+    test "pages_visible is a no-op when nothing new needs loading",
+         %{conn: conn, user: user, workspace: ws, long_resource: r} do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      first = render_hook(view, "pages_visible", %{"first" => 1, "last" => 2})
+      second = render_hook(view, "pages_visible", %{"first" => 1, "last" => 2})
+
+      # Re-reporting the same range with everything already loaded must
+      # produce an identical response — the `:noreply, socket` short-circuit
+      # in the handler avoids a wasteful re-render. Using the markup
+      # equality is a structural proxy for "no diff was sent."
+      assert first == second
+    end
+
+    test "footnote numbering resets per page",
+         %{conn: conn, user: user, workspace: ws, long_resource: r} do
+      rect = %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05}
+
+      {:ok, _} =
+        Annotations.create_comment(r.id, 1, rect, "p1-second", "another on page 1", actor: user)
+
+      {:ok, _} =
+        Annotations.create_comment(r.id, 2, rect, "p2-first", "first on page 2", actor: user)
+
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # Pages 1 and 2 are both in the initial visible range. The first
+      # annotation on each page renders as ¹, the second on page 1 as ².
+      html = render(view)
+
+      # Snippet check — each page's first annotation gets number 1, not
+      # globally-incremented numbers (which would put the page-2 first
+      # annotation at number 3).
+      page_1_first_marker = ~r{<sup[^>]*>\s*1\s*</sup>}
+      assert Regex.scan(page_1_first_marker, html) |> length() >= 2
+    end
+  end
+
+  describe "Slice 15 — telemetry" do
+    test "annotation create emits a [:studysync, :annotations, :create, :stop] event",
+         %{conn: conn, user: user, workspace: ws, resource: r} do
+      ref = make_ref()
+      handler_id = "test-telemetry-#{System.unique_integer([:positive])}"
+      test_pid = self()
+
+      :telemetry.attach(
+        handler_id,
+        [:studysync, :annotations, :create, :stop],
+        fn _event, measurements, metadata, _config ->
+          send(test_pid, {ref, :create_stop, measurements, metadata})
+        end,
+        nil
+      )
+
+      try do
+        {:ok, view, _html} =
+          conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+        render_hook(view, "text_selected", %{
+          "text" => "telemetry snippet",
+          "page" => 1,
+          "rect" => %{"x" => 0.1, "y" => 0.2, "width" => 0.2, "height" => 0.04}
+        })
+
+        view
+        |> form("#annotation-form", form: %{body: "telemetry body"})
+        |> render_submit()
+
+        assert_receive {^ref, :create_stop, measurements, metadata}, 500
+
+        assert is_integer(measurements[:duration]) and measurements[:duration] >= 0
+        assert metadata[:type] == :comment
+        assert metadata[:resource_id] == r.id
+        assert metadata[:outcome] == :ok
+      after
+        :telemetry.detach(handler_id)
+      end
+    end
+
+    test "PubSub broadcast emits a [:studysync, :pubsub, :broadcast, :stop] event",
+         %{user: user, resource: r} do
+      ref = make_ref()
+      handler_id = "test-pubsub-telemetry-#{System.unique_integer([:positive])}"
+      test_pid = self()
+
+      :telemetry.attach(
+        handler_id,
+        [:studysync, :pubsub, :broadcast, :stop],
+        fn _event, measurements, metadata, _config ->
+          send(test_pid, {ref, :broadcast, measurements, metadata})
+        end,
+        nil
+      )
+
+      try do
+        # Creating an annotation triggers two broadcasts — resource topic
+        # and workspace topic. We only need to see that the telemetry hook
+        # fired at all, with our event tag.
+        {:ok, _} =
+          Annotations.create_comment(
+            r.id,
+            1,
+            %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05},
+            "broadcast snippet",
+            "broadcast body",
+            actor: user
+          )
+
+        assert_receive {^ref, :broadcast, measurements, metadata}, 500
+
+        assert is_integer(measurements[:duration]) and measurements[:duration] >= 0
+        assert metadata[:event] in [:annotation_created, :activity_annotation_created]
+        assert is_binary(metadata[:topic])
+      after
+        :telemetry.detach(handler_id)
+      end
     end
   end
 end

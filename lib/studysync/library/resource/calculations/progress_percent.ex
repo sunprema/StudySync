@@ -36,6 +36,13 @@ defmodule Studysync.Library.Resource.Calculations.ProgressPercent do
 
   defp max_pages_per_resource([], _user_id), do: %{}
 
+  # Slice 14 audit: `authorize?: false` is intentional. Progress is "how far
+  # has this reader gotten", which counts a user's *own* annotations regardless
+  # of visibility — a private highlight on page 80 is still evidence the user
+  # read to page 80. We only project `[:resource_id, :page_number]`; annotation
+  # body/text/snippet never enter this code path, so private content stays
+  # private even though the page-number metadata of one's own annotations
+  # contributes to one's own visible progress %.
   defp max_pages_per_resource(resource_ids, user_id) do
     Annotation
     |> Ash.Query.filter(resource_id in ^resource_ids and user_id == ^user_id)
