@@ -51,14 +51,14 @@ Users can sign in, create a workspace, and invite members. No PDFs yet.
 
 A workspace member can upload a PDF and see it in a workspace library list. No reader yet.
 
-- [ ] **2.1** Ash resource: `StudySync.Library.Resource` (id, workspace_id, title, file_url, page_count, inserted_at)
-- [ ] **2.2** File storage adapter: local disk for dev, S3-compatible for prod (behind a behaviour)
-- [ ] **2.3** Ash action: `:upload` that accepts a file, stores it, extracts page count, persists the resource
-- [ ] **2.4** Ash policies: only workspace members can read/upload resources in their workspace
-- [ ] **2.5** LiveView: workspace library page listing resources (title, page count, uploaded by, date)
-- [ ] **2.6** LiveView: upload form with progress indicator, themed
-- [ ] **2.7** Phoenix component: `<.resource_card>` styled per Margin Notes
-- [ ] **2.8** Tests: upload action, listing, policy enforcement
+- [x] **2.1** Ash resource: `StudySync.Library.Resource` (id, workspace_id, title, file_url, page_count, inserted_at)
+- [x] **2.2** File storage adapter: local disk for dev, S3-compatible for prod (behind a behaviour)
+- [x] **2.3** Ash action: `:upload` that accepts a file, stores it, extracts page count, persists the resource
+- [x] **2.4** Ash policies: only workspace members can read/upload resources in their workspace
+- [x] **2.5** LiveView: workspace library page listing resources (title, page count, uploaded by, date)
+- [x] **2.6** LiveView: upload form with progress indicator, themed
+- [x] **2.7** Phoenix component: `<.resource_card>` styled per Margin Notes
+- [x] **2.8** Tests: upload action, listing, policy enforcement
 
 ---
 
@@ -298,5 +298,6 @@ When a slice closes (all items checked), append a one-line entry here:
 ```
 - Slice 0 — Foundations — closed 2026-04-26
 - Slice 1 — Identity & Workspaces — closed 2026-04-26
+- Slice 2 — Resources (PDF upload & storage) — closed 2026-04-26
 - ...
 ```

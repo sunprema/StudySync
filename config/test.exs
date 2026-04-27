@@ -1,6 +1,11 @@
 import Config
 config :studysync, Oban, testing: :manual
 config :studysync, token_signing_secret: "i/PlCz3iF+lY8VqLUjXkrUbaNZ5Ae0EH"
+
+config :studysync,
+  storage_adapter: Studysync.Library.Storage.Local,
+  storage_path: Path.join(System.tmp_dir!(), "studysync-test-uploads")
+
 config :bcrypt_elixir, log_rounds: 1
 config :ash, policies: [show_policy_breakdowns?: true], disable_async?: true
 

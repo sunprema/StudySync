@@ -31,6 +31,7 @@ defmodule StudysyncWeb.Router do
       live "/workspaces", WorkspaceLive.Index, :index
       live "/workspaces/new", WorkspaceLive.New, :new
       live "/workspaces/:id", WorkspaceLive.Show, :show
+      live "/workspaces/:id/library", WorkspaceLive.Library, :library
     end
   end
 

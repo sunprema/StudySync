@@ -27,9 +27,17 @@ defmodule StudysyncWeb.WorkspaceLive.Show do
   def render(assigns) do
     ~H"""
     <div class="mx-auto max-w-3xl px-8 py-12">
-      <header class="border-b border-paper-2 pb-6 mb-10">
-        <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">Workspace</p>
-        <h1 class="font-display text-5xl text-ink mt-1">{@workspace.name}</h1>
+      <header class="border-b border-paper-2 pb-6 mb-10 flex items-baseline justify-between gap-6">
+        <div>
+          <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">Workspace</p>
+          <h1 class="font-display text-5xl text-ink mt-1">{@workspace.name}</h1>
+        </div>
+        <.link
+          navigate={~p"/workspaces/#{@workspace.id}/library"}
+          class="font-mono text-xs uppercase tracking-widest text-ink-soft hover:text-terracotta"
+        >
+          Library →
+        </.link>
       </header>
 
       <section class="mb-12">

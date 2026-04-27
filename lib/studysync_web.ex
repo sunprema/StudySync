@@ -88,6 +88,7 @@ defmodule StudysyncWeb do
       import Phoenix.HTML
       # Core UI components
       import StudysyncWeb.CoreComponents
+      import StudysyncWeb.LibraryComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

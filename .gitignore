@@ -35,3 +35,6 @@ node_modules/
 # LiveSvelte build artifacts
 /assets/svelte/_build/
 /priv/svelte/
+
+# Local PDF uploads (Storage.Local; production uses Tigris).
+/priv/uploads/
