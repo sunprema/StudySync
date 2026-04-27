@@ -174,6 +174,9 @@ defmodule Studysync.Accounts.User do
       # Generates an authentication token for the user
       change AshAuthentication.GenerateTokenChange
 
+      # Attaches any pending workspace invitations addressed to this email.
+      change Studysync.Accounts.User.Changes.ClaimPendingInvites
+
       # validates that the password matches the confirmation
       validate AshAuthentication.Strategy.Password.PasswordConfirmationValidation
 
@@ -253,6 +256,10 @@ defmodule Studysync.Accounts.User do
 
       change {AshAuthentication.Strategy.RememberMe.MaybeGenerateTokenChange,
               strategy_name: :remember_me}
+
+      # Magic-link sign-in upserts the user — claim invites in the
+      # newly-registered case too.
+      change Studysync.Accounts.User.Changes.ClaimPendingInvites
 
       metadata :token, :string do
         allow_nil? false

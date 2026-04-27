@@ -30,11 +30,32 @@ defmodule Studysync.Workspaces.Membership do
       argument :email, :ci_string, allow_nil?: false
 
       change Studysync.Workspaces.Membership.Changes.ResolveInvite
+      change Studysync.Workspaces.Membership.Changes.SendInviteEmail
     end
 
     update :accept do
       accept []
       change set_attribute(:status, :active)
+    end
+
+    update :resend_invite do
+      # No-op write — the row already represents the pending invite. The
+      # change re-fires the email so the invitee can act on a fresh link.
+      accept []
+      require_atomic? false
+
+      change Studysync.Workspaces.Membership.Changes.SendInviteEmail
+    end
+
+    update :claim_for_user do
+      # Used at signup time to attach a freshly-registered user to any
+      # pending memberships that were addressed to their email. Status
+      # stays `:pending` — the user must still explicitly accept.
+      argument :user_id, :uuid, allow_nil?: false
+
+      accept []
+
+      change set_attribute(:user_id, arg(:user_id))
     end
   end
 
@@ -48,6 +69,10 @@ defmodule Studysync.Workspaces.Membership do
 
     policy action(:accept) do
       authorize_if expr(user_id == ^actor(:id) and status == :pending)
+    end
+
+    policy action(:resend_invite) do
+      authorize_if Studysync.Workspaces.Checks.ActorIsWorkspaceAdmin
     end
 
     policy action_type(:read) do

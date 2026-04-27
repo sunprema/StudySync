@@ -35,6 +35,11 @@ defmodule StudysyncWeb.Router do
       live "/workspaces/:workspace_id/library/:id", PdfLive.Show, :show
     end
 
+    ash_authentication_live_session :invite_routes,
+      on_mount: {StudysyncWeb.LiveUserAuth, :live_user_optional} do
+      live "/invites/:token", InviteLive.Accept, :accept
+    end
+
     get "/resources/:id/file", ResourceFileController, :show
   end
 

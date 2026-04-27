@@ -93,22 +93,39 @@ defmodule StudysyncWeb.WorkspaceLive.Show do
     {:noreply, assign(socket, :invite_form, form)}
   end
 
-  def handle_event("submit_invite", %{"form" => params}, socket) do
-    case AshPhoenix.Form.submit(socket.assigns.invite_form, params: params) do
-      {:ok, _membership} ->
-        actor = socket.assigns.current_user
-        workspace = reload_workspace!(socket.assigns.workspace.id, actor)
+  def handle_event("submit_invite", %{"form" => %{"email" => email}}, socket) do
+    actor = socket.assigns.current_user
+    workspace_id = socket.assigns.workspace.id
+
+    case Workspaces.invite_member(workspace_id, email, actor: actor) do
+      {:ok, membership} ->
+        workspace = reload_workspace!(workspace_id, actor)
+        flash = invite_flash(membership)
 
         {:noreply,
          socket
-         |> put_flash(:info, "Invitation sent.")
+         |> put_flash(:info, flash)
          |> assign(:workspace, workspace)
          |> assign(:invite_form, build_invite_form(workspace, actor))}
 
-      {:error, form} ->
-        {:noreply, assign(socket, :invite_form, form)}
+      {:error, :already_member} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "#{email} is already a member of this workspace."
+         )}
+
+      {:error, _other} ->
+        {:noreply, put_flash(socket, :error, "Could not send invitation.")}
     end
   end
+
+  defp invite_flash(%{updated_at: updated_at, inserted_at: inserted_at})
+       when updated_at != inserted_at,
+       do: "Invitation re-sent."
+
+  defp invite_flash(_), do: "Invitation sent."
 
   defp member_label(%{user: %{email: email}}) when not is_nil(email), do: to_string(email)
 
