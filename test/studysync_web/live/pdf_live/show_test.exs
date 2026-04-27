@@ -105,6 +105,73 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
 
       assert target == "/workspaces/#{other_ws.id}/library"
     end
+
+    test "outline_loaded swaps the chapter rail from placeholders to real chapters",
+         %{conn: conn, user: user, workspace: ws, resource: r} do
+      {:ok, view, html} =
+        conn
+        |> sign_in(user)
+        |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # Pre-event: the rail falls back to roman-numeral placeholders.
+      assert html =~ ~s(aria-label="Chapters")
+      assert html =~ ~s(title="III")
+
+      after_outline =
+        render_hook(view, "outline_loaded", %{
+          "chapters" => [
+            %{"label" => "Cities & Memory", "page" => 1},
+            %{"label" => "Cities & Desire", "page" => 2},
+            # Bogus page number — out of range, dropped silently.
+            %{"label" => "Out of bounds", "page" => 999},
+            # Empty label — dropped.
+            %{"label" => "  ", "page" => 3}
+          ]
+        })
+
+      assert after_outline =~ "Cities &amp; Memory"
+      assert after_outline =~ "Cities &amp; Desire"
+      assert after_outline =~ ~s|title="Cities &amp; Memory (page 1)"|
+      refute after_outline =~ "Out of bounds"
+      # Roman placeholders gone once we have real chapters.
+      refute after_outline =~ ~s(title="III")
+    end
+
+    test "chapter rail click pushes scroll_to_page to the canvas",
+         %{conn: conn, user: user, workspace: ws, resource: r} do
+      {:ok, view, _html} =
+        conn
+        |> sign_in(user)
+        |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      render_hook(view, "outline_loaded", %{
+        "chapters" => [
+          %{"label" => "Cities & Memory", "page" => 1},
+          %{"label" => "Cities & Desire", "page" => 2}
+        ]
+      })
+
+      view
+      |> element(~s|button[phx-value-page="2"]|)
+      |> render_click()
+
+      assert_push_event(view, "scroll_to_page", %{page: 2})
+    end
+
+    test "chapter_clicked is a no-op when the page is out of range",
+         %{conn: conn, user: user, workspace: ws, resource: r} do
+      {:ok, view, _html} =
+        conn
+        |> sign_in(user)
+        |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # Hand-craft the event — the rail itself drops out-of-range entries
+      # before render, so we have to drive the handler directly to exercise
+      # the guard.
+      render_hook(view, "chapter_clicked", %{"page" => 999})
+
+      refute_push_event(view, "scroll_to_page", %{})
+    end
   end
 
   describe "annotations" do

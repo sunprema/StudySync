@@ -697,33 +697,51 @@ defmodule StudysyncWeb.LibraryComponents do
   defp milestone_creator_email(_), do: nil
 
   @doc """
-  Static chapter rail — left vertical column with chapter labels, mono caps.
+  Chapter rail — left vertical column with chapter labels, mono caps.
 
-  Slice 3 ships the layout shell; chapters are illustrative until the
-  resource gains a real outline (later slice).
+  Accepts a flat list of `%{label: String.t(), page: pos_integer()}` entries,
+  derived from the PDF's outline by the canvas (see `outline_loaded` in
+  CLAUDE.md §4.3). Real chapters render as buttons that emit
+  `chapter_clicked` (the LV pushes `scroll_to_page` back to the canvas).
+  Falls back to inert roman-numeral placeholders when the list is empty
+  (PDFs without an outline, or before the canvas reports).
   """
   attr :chapters, :list, default: []
 
   def chapter_rail(assigns) do
-    assigns =
-      if assigns.chapters == [] do
-        Phoenix.Component.assign(assigns, :chapters, ["I", "II", "III", "IV", "V"])
-      else
-        assigns
-      end
-
     ~H"""
     <nav
       aria-label="Chapters"
-      class="hidden md:flex w-10 shrink-0 flex-col items-center pt-12 gap-8 border-r border-paper-2 text-ink-soft"
+      class="hidden md:flex w-10 shrink-0 flex-col items-center pt-12 pb-6 gap-6 border-r border-paper-2 text-ink-soft overflow-y-auto"
     >
-      <span
-        :for={label <- @chapters}
-        class="font-mono text-[10px] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180"
-      >
-        {label}
-      </span>
+      <%= if @chapters == [] do %>
+        <span
+          :for={label <- default_chapters()}
+          class={chapter_label_class()}
+          title={label}
+        >
+          {label}
+        </span>
+      <% else %>
+        <button
+          :for={chapter <- @chapters}
+          type="button"
+          phx-click="chapter_clicked"
+          phx-value-page={chapter.page}
+          class={[chapter_label_class(), "hover:text-terracotta cursor-pointer transition-colors"]}
+          title={"#{chapter.label} (page #{chapter.page})"}
+        >
+          {chapter.label}
+        </button>
+      <% end %>
     </nav>
     """
+  end
+
+  defp default_chapters, do: ["I", "II", "III", "IV", "V"]
+
+  defp chapter_label_class do
+    "font-mono text-[10px] uppercase tracking-widest [writing-mode:vertical-rl] rotate-180 " <>
+      "max-h-40 overflow-hidden text-ellipsis whitespace-nowrap bg-transparent border-0 p-0 m-0"
   end
 end

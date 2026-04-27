@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import * as pdfjsLib from "pdfjs-dist";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-  import { useLiveSvelte } from "live_svelte";
+  import { useLiveSvelte, useLiveEvent } from "live_svelte";
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -44,6 +44,16 @@
   //                        what the reader is actually looking at.
   //                        (added Slice 15; revised Slice 15a; `primary`
   //                        added when scope tabs landed.)
+  //   outline_loaded     → { chapters: [{ label, page }] } emitted once after
+  //                        the PDF document loads, with top-level outline
+  //                        entries flattened to label/page pairs. Empty list
+  //                        when the PDF has no outline. The LV stores it as
+  //                        @chapters and feeds the chapter rail.
+  //
+  // Server-pushed events (LiveView → canvas), consumed via useLiveEvent:
+  //   scroll_to_page     → { page } — bring `page` into view (smooth). Used
+  //                        by the chapter rail click; the IO callback then
+  //                        updates :focal_page via pages_visible naturally.
   let {
     file_url,
     total_pages = 0,
@@ -57,6 +67,15 @@
   } = $props();
 
   const { pushEvent } = useLiveSvelte();
+
+  // Server → canvas: bring a specific page into view (chapter rail click).
+  // The IO callback then reports the new range via `pages_visible`, which
+  // updates `:focal_page` — so we don't sync any state here, just scroll.
+  useLiveEvent("scroll_to_page", (payload) => {
+    const page = Number(payload?.page);
+    if (!Number.isFinite(page)) return;
+    scrollToPage(page);
+  });
 
   let scrollEl = $state(null);
   let pages = $state([]);
@@ -167,11 +186,55 @@
         canvas: null,
         textLayer: null,
       }));
+
+      reportOutline();
     } catch (e) {
       console.error("PdfCanvasRenderer: failed to load PDF", e);
       loadError = e?.message || "Failed to load PDF";
     }
   });
+
+  // Pull the PDF's top-level outline (table of contents) and ship it to LV
+  // as { chapters: [{ label, page }] }. Resolves each item's destination to a
+  // 1-indexed page number; items we can't resolve are skipped silently.
+  // Nested children are ignored on purpose — the rail is a quiet 40px column
+  // and a flat top-level list is what fits the visual.
+  async function reportOutline() {
+    if (!pdfDoc) return;
+    let chapters = [];
+    try {
+      const outline = await pdfDoc.getOutline?.();
+      if (Array.isArray(outline) && outline.length > 0) {
+        for (const item of outline) {
+          const page = await resolveOutlinePage(item);
+          if (page == null) continue;
+          const label = (item.title || "").trim();
+          if (!label) continue;
+          chapters.push({ label, page });
+        }
+      }
+    } catch (e) {
+      console.warn("PdfCanvasRenderer: outline extraction failed", e);
+    }
+    pushEvent("outline_loaded", { chapters });
+  }
+
+  async function resolveOutlinePage(item) {
+    try {
+      let dest = item.dest;
+      if (typeof dest === "string") {
+        dest = await pdfDoc.getDestination(dest);
+      }
+      if (!Array.isArray(dest) || dest.length === 0) return null;
+      const ref = dest[0];
+      if (!ref || typeof ref !== "object") return null;
+      const pageIndex = await pdfDoc.getPageIndex(ref);
+      if (typeof pageIndex !== "number" || pageIndex < 0) return null;
+      return pageIndex + 1;
+    } catch {
+      return null;
+    }
+  }
 
   onDestroy(() => {
     if (observer) observer.disconnect();
@@ -347,6 +410,18 @@
     if (slot?.container) {
       slot.container.scrollIntoView({ behavior: "smooth", block: "start" });
       currentPage = next;
+    }
+  }
+
+  function scrollToPage(page) {
+    if (!scrollEl) return;
+    const total = pages.length;
+    if (total === 0) return;
+    const target = Math.min(total, Math.max(1, Math.trunc(page)));
+    const slot = pages[target - 1];
+    if (slot?.container) {
+      slot.container.scrollIntoView({ behavior: "smooth", block: "start" });
+      currentPage = target;
     }
   }
 

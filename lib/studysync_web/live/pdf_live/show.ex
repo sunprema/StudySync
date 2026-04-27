@@ -58,6 +58,7 @@ defmodule StudysyncWeb.PdfLive.Show do
           |> assign(:milestone_mode, false)
           |> assign(:milestone_form, nil)
           |> assign(:milestone_pending_placement, nil)
+          |> assign(:chapters, [])
 
         socket =
           if initial_active_id do
@@ -134,7 +135,7 @@ defmodule StudysyncWeb.PdfLive.Show do
       phx-window-keydown="reader_keydown"
       phx-key="Escape"
     >
-      <.chapter_rail />
+      <.chapter_rail chapters={@chapters} />
 
       <main class="flex-1 min-w-0 flex flex-col">
         <header class="flex items-baseline justify-between border-b border-paper-2 px-8 py-4 gap-4">
@@ -760,6 +761,28 @@ defmodule StudysyncWeb.PdfLive.Show do
   # page). We use `primary` as `:focal_page`; the margin column then
   # highlights cards on that page (Slice 15a) and the "Page" scope tab
   # filters to it.
+  # PDF.js → LV: top-level outline entries flattened to {label, page}.
+  # Stored as @chapters and fed to the chapter rail. Empty list when the
+  # PDF has no outline; the rail falls back to roman-numeral placeholders.
+  def handle_event("outline_loaded", %{"chapters" => chapters}, socket) do
+    total_pages = socket.assigns.resource.page_count
+    parsed = parse_outline_chapters(chapters, total_pages)
+    {:noreply, assign(socket, :chapters, parsed)}
+  end
+
+  # Chapter rail click → ask the canvas to bring `page` into view. The
+  # canvas's IntersectionObserver then reports the new visible range via
+  # `pages_visible`, which updates `:focal_page` — so we don't need to
+  # touch any assign here, just route the signal.
+  def handle_event("chapter_clicked", %{"page" => page}, socket) do
+    total_pages = socket.assigns.resource.page_count
+
+    case parse_page_in_range(page, total_pages) do
+      {:ok, page} -> {:noreply, push_event(socket, "scroll_to_page", %{page: page})}
+      :error -> {:noreply, socket}
+    end
+  end
+
   def handle_event("pages_visible", %{"first" => first} = params, socket) do
     primary = Map.get(params, "primary", first)
     total_pages = socket.assigns.resource.page_count
@@ -1193,6 +1216,46 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   defp parse_filter_scope("page"), do: :page
   defp parse_filter_scope(_), do: :all
+
+  # Sanitize the outline payload from the canvas: keep only entries with a
+  # non-empty label and an in-range page, normalise to a flat list of maps,
+  # and cap the count so a pathological 500-entry TOC can't bloat the rail.
+  defp parse_outline_chapters(chapters, total_pages) when is_list(chapters) do
+    chapters
+    |> Enum.flat_map(fn
+      %{"label" => label, "page" => page} ->
+        with {:ok, label} <- normalize_label(label),
+             {:ok, page} <- normalize_page(page, total_pages) do
+          [%{label: label, page: page}]
+        else
+          _ -> []
+        end
+
+      _ ->
+        []
+    end)
+    |> Enum.take(40)
+  end
+
+  defp parse_outline_chapters(_, _), do: []
+
+  defp normalize_label(label) when is_binary(label) do
+    case String.trim(label) do
+      "" -> :error
+      trimmed -> {:ok, trimmed}
+    end
+  end
+
+  defp normalize_label(_), do: :error
+
+  defp normalize_page(page, total_pages) do
+    n = to_int(page)
+    if n >= 1 and n <= max(total_pages, 1), do: {:ok, n}, else: :error
+  rescue
+    _ -> :error
+  end
+
+  defp parse_page_in_range(page, total_pages), do: normalize_page(page, total_pages)
 
   # Narrow the annotation list by the active scope. `:all` is the
   # whole-book lens; `:page` clips to the focal page (the topmost page

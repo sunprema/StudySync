@@ -82,6 +82,14 @@ This is the only API surface between the two worlds. Keep it small and stable.
 - `milestone_placed` → `{ page, position: { x, y } }` — fired in `milestone_mode` when an admin clicks a page (added Slice 12)
 - `apply_stamp` → `{ milestone_id }` — fired when the user confirms a stamp from the per-milestone popover. The LiveView authorises through Ash, applies the stamp, and broadcasts (`:stamp_applied`) so all open readers re-fetch and patch. (added Slice 13)
 - `pages_visible` → `{ first, last, primary }` — debounced (~120ms) report of the page range currently intersecting the viewport. `first`/`last` come from the canvas's IntersectionObserver (with its 1000px rootMargin) and define the virtualization range. `primary` is the page with the largest *true* viewport overlap — the LiveView uses it as the focal page so the margin column's focal-page highlight and the "Page" scope tab match what the reader is actually looking at, not whatever sliver of an adjacent page sits within the rootMargin buffer. (added Slice 15; lazy-hydration role removed in Slice 15a — the reader now eagerly loads the whole book at mount. `primary` added when the margin scope tabs landed.)
+- `outline_loaded` → `{ chapters: [{ label, page }] }` — fired once after PDF.js loads the document, with the top-level outline entries flattened to `{ label, page }` pairs (page is 1-indexed). Empty list when the PDF has no outline. The LiveView stores it as `@chapters` and feeds the chapter rail. Top-level only — nested outline items are ignored to keep the rail visually quiet. (added Slice 17)
+- `chapter_clicked` → `{ page }` — fired by the chapter rail (LV-rendered, `phx-click`) when a reader clicks a chapter. The LiveView validates `page` is in range and pushes `scroll_to_page` back to the canvas. (added Slice 17)
+
+**Server-pushed events (LiveView → Svelte):**
+
+These are emitted via `push_event/3` and consumed inside the Svelte canvas via `useLiveEvent` from `live_svelte`. Use sparingly — prefer prop changes when the UI depends on persistent state. Server-pushed events are for one-shot, ephemeral signals where adding a prop just to bump a nonce would be noise.
+
+- `scroll_to_page` → `{ page }` — fires when the LiveView wants the canvas to bring a specific page into view (currently used by the chapter rail). The canvas calls `scrollIntoView({ behavior: "smooth", block: "start" })` on the matching slot. The canvas's `pages_visible` IO callback then updates `:focal_page` naturally — no separate state sync needed. (added Slice 17; an earlier `scroll_to_page` from the first cut of Slice 15a was removed before 15a closed; this is its re-introduction for chapter navigation.)
 
 If you need a new prop or event, **add it to this contract in the same PR** and update §4.3 here. Don't smuggle in undocumented channels.
 

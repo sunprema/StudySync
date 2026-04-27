@@ -344,6 +344,21 @@ Final pass to match the design fidelity. This is where the product earns its aes
 
 ---
 
+## Slice 17 — Chapter Rail Navigation
+
+The thin chapter rail on the left was a layout placeholder since Slice 3 — five hardcoded roman-numeral spans regardless of which book was open. This slice replaces it with the PDF's real outline and makes each chapter clickable to jump the canvas to that page.
+
+- [x] **17.1** Svelte canvas calls `pdfDoc.getOutline()` after document load, resolves each top-level entry's destination to a 1-indexed page via `pdfDoc.getPageIndex`, and emits `outline_loaded → { chapters: [{ label, page }] }`. Items that can't be resolved (no dest, named-dest miss, ref miss) are dropped silently. Nested children are ignored — the rail is a quiet 40px column.
+- [x] **17.2** `PdfLive.Show` mount initialises `:chapters = []`; `handle_event("outline_loaded", ...)` validates labels (non-empty), clamps pages to the resource's page count, drops malformed entries, and caps the list at 40 to bound a pathological TOC. Empty list → fallback rendering.
+- [x] **17.3** `<.chapter_rail>` accepts `[%{label, page}]`, renders each as a vertical mono-caps span with `title="<label> (page <n>)"` for hover tooltip, and falls back to roman placeholders `["I", "II", "III", "IV", "V"]` when the list is empty (PDFs without an outline, or pre-event). Nav scrolls (`overflow-y-auto`) so a long TOC can't overflow the viewport.
+- [x] **17.4** Real-chapter spans replaced with `phx-click="chapter_clicked" phx-value-page={chapter.page}` buttons in `<.chapter_rail>`; placeholder fallback stays as inert spans (no page data to jump to).
+- [x] **17.5** `handle_event("chapter_clicked", %{"page" => page}, ...)` validates the page is in `1..page_count` (reusing `normalize_page/2`) and `push_event("scroll_to_page", %{page: page})` to the Svelte canvas. No assign change — the canvas reports back via `pages_visible`, which already updates `:focal_page`.
+- [x] **17.6** Svelte canvas subscribes via `useLiveEvent("scroll_to_page", ...)` and calls `scrollIntoView({ behavior: "smooth", block: "start" })` on the matching page slot. New `scrollToPage/1` helper sits next to `scrollByPage/1` and uses the same easing.
+- [x] **17.7** CLAUDE.md §4.3 contract updated: new "Server-pushed events (LiveView → Svelte)" subsection introduced, with `scroll_to_page` documented; `chapter_clicked` documented under the Svelte → LV events list (note: `chapter_clicked` is actually a `phx-click` from LV-rendered HEEx, not a Svelte-emitted event, but it's documented alongside the canvas events for discoverability since they're paired).
+- [x] **17.8** Tests added in `show_test.exs`: clicking a chapter button emits `scroll_to_page` with the matching page; an out-of-range `chapter_clicked` payload is a no-op (no push_event).
+
+---
+
 ## Out of Scope (don't build without explicit ask)
 
 Per CLAUDE.md §8.3 and REQUIREMENTS §9 / §11:
@@ -380,5 +395,6 @@ When a slice closes (all items checked), append a one-line entry here:
 - Slice 15 — Performance Pass — closed 2026-04-27 (Slice 11 still deferred)
 - Slice 15a — Margin Column: This Page + Across the Book — closed 2026-04-27 (15a.10 visual review pending; Slice 11 still deferred)
 - Slice 16 — UX Polish — closed 2026-04-27 (16.8 design-PDF review and 16.9 core-loop QA pending — both need a browser session; Slice 11 still deferred so the AI step of 16.9 is gated on it)
+- Slice 17 — Chapter Rail Navigation — closed 2026-04-27 (Slice 11 still deferred)
 - ...
 ```
