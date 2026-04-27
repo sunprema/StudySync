@@ -33,15 +33,16 @@ defmodule Studysync.Annotations do
   Lightweight per-resource index of annotations visible to `actor`.
 
   Slice 15.1: the canvas needs marker geometry for *every* annotation in
-  the book so the prose stays consistent as the user scrolls, but the
-  margin column only needs full bodies for the pages currently in view.
-  This action returns just the marker-shaped fields (id, type, page,
-  rect, inserted_at, visibility, user_id) — no body, no text, no
-  reply_count, no user relationship — so the round-trip is cheap even
-  on a 10K-annotation book.
+  the book — id, type, page, rect, inserted_at, visibility, user_id —
+  but the margin column only needs full bodies for the pages currently
+  in view. This action returns just the marker-shaped fields, no body /
+  text / replies, so the round-trip is cheap even on a 10K-annotation
+  book.
 
-  Read policies on the underlying Ash action still apply: private
-  annotations from other authors never appear in the index.
+  Currently unused by the reader (the margin column eagerly loads full
+  annotations after Slice 15a's UX revert), but kept here as a building
+  block for future flows that need a cheap whole-book index — and used
+  by `priv/scripts/perf_pass.exs` to track index-load latency.
   """
   @spec list_annotation_index(Ash.UUID.t(), keyword()) :: [map()]
   def list_annotation_index(resource_id, opts) when is_binary(resource_id) do
@@ -83,10 +84,12 @@ defmodule Studysync.Annotations do
   end
 
   @doc """
-  Load full annotations for a single page, for the margin column. Used by
-  the lazy-load handler in `StudysyncWeb.PdfLive.Show` (Slice 15.1/15.2).
-  Loads `:user` and the `:reply_count` aggregate so the margin card
-  renders without further round-trips.
+  Load full annotations for a single page, for the margin column. Was
+  the lazy-load entry point in Slice 15.1; superseded by
+  `list_annotations_for_resource/2` after Slice 15a's UX revert (a single
+  whole-book load drives a single, stable margin list with a focal-page
+  highlight rather than two zones). Kept for the perf script and for
+  future flows that need a per-page slice.
   """
   @spec list_annotations_for_pages(Ash.UUID.t(), [pos_integer()], keyword()) :: [map()]
   def list_annotations_for_pages(_resource_id, [], _opts), do: []
@@ -97,6 +100,22 @@ defmodule Studysync.Annotations do
     |> Ash.Query.filter(resource_id == ^resource_id)
     |> Ash.Query.filter(page_number in ^pages)
     |> Ash.Query.sort(inserted_at: :asc)
+    |> Ash.Query.load([:user, :reply_count])
+    |> Ash.read!(opts)
+  end
+
+  @doc """
+  Load all annotations on a resource visible to `actor`, with `:user` and
+  `:reply_count` preloaded — the shape the margin column needs to render
+  every card without further round-trips. The reader uses this on mount
+  (post Slice 15a revert) so the full-bodied note is always available
+  for any peer mark in the book.
+  """
+  @spec list_annotations_for_resource(Ash.UUID.t(), keyword()) :: [map()]
+  def list_annotations_for_resource(resource_id, opts) when is_binary(resource_id) do
+    Studysync.Annotations.Annotation
+    |> Ash.Query.filter(resource_id == ^resource_id)
+    |> Ash.Query.sort([{:page_number, :asc}, {:inserted_at, :asc}])
     |> Ash.Query.load([:user, :reply_count])
     |> Ash.read!(opts)
   end

@@ -9,37 +9,18 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   require Ash.Query
 
-  # Slice 15.1/15.2: how many pages around the visible range we eagerly
-  # prefetch on `pages_visible`. ±1 page matches the spec ("scroll-near, one
-  # page ahead/behind"). At mount, we hydrate pages 1..@initial_visible_pages
-  # so the first paint isn't blank while we wait for Svelte's first
-  # IntersectionObserver tick.
-  @prefetch_buffer 1
-  @initial_visible_pages 3
-
   def mount(%{"workspace_id" => workspace_id, "id" => id}, _session, socket) do
     actor = socket.assigns.current_user
 
     case Library.get_resource(id, actor: actor, load: [:uploaded_by]) do
       {:ok, resource}
       when not is_nil(resource) and resource.workspace_id == workspace_id ->
-        # Lightweight index — every annotation's marker geometry, no
-        # bodies/replies. Drives Svelte markers, filter chip counts, and the
-        # per-page footnote numbering (1ⁿ resets each page).
-        index = Annotations.list_annotation_index(resource.id, actor: actor)
-
-        # Initial visible range — pages 1..3 by default. Prefetch ±1 then
-        # clamps to the resource. For short PDFs (≤4 pages) this loads the
-        # whole book; for long PDFs only the first viewport's worth.
-        initial_visible = {1, min(@initial_visible_pages, resource.page_count)}
-        initial_pages = pages_in_range(initial_visible, resource.page_count)
-
-        annotations_by_id =
-          resource.id
-          |> Annotations.list_annotations_for_pages(initial_pages, actor: actor)
-          |> Map.new(&{&1.id, &1})
-
-        loaded_pages = MapSet.new(initial_pages)
+        # Slice 15a (revert): a single eager whole-book load. The reader
+        # always sees every peer annotation in the margin column, with
+        # the focal page highlighted by background color. Cheaper than it
+        # sounds — see PERFORMANCE.md (200 annotations ≈ 16ms p50 with
+        # `:user` and `:reply_count` preloaded).
+        annotations = Annotations.list_annotations_for_resource(resource.id, actor: actor)
 
         milestones = load_milestones(resource.id, actor)
         is_admin? = Workspaces.actor_admin?(workspace_id, actor)
@@ -47,32 +28,28 @@ defmodule StudysyncWeb.PdfLive.Show do
 
         if connected?(socket), do: AnnotationsPubSub.subscribe(resource.id)
 
-        socket =
-          socket
-          |> assign(:resource, resource)
-          |> assign(:workspace_id, workspace_id)
-          |> assign(:file_url, ~p"/resources/#{resource.id}/file")
-          |> assign(:page_title, resource.title)
-          |> assign(:annotation_index, index)
-          |> assign(:annotations_by_id, annotations_by_id)
-          |> assign(:loaded_pages, loaded_pages)
-          |> assign(:visible_pages, initial_visible)
-          |> assign(:selection, nil)
-          |> assign(:annotation_form, nil)
-          |> assign(:annotation_form_type, nil)
-          |> assign(:active_annotation_id, nil)
-          |> assign(:expanded_thread_id, nil)
-          |> assign(:thread_replies, [])
-          |> assign(:reply_form, nil)
-          |> assign(:filter_type, :all)
-          |> assign(:milestones, milestones)
-          |> assign(:is_admin?, is_admin?)
-          |> assign(:total_readers, total_readers)
-          |> assign(:milestone_mode, false)
-          |> assign(:milestone_form, nil)
-          |> assign(:milestone_pending_placement, nil)
-
-        {:ok, init_stream(socket)}
+        {:ok,
+         socket
+         |> assign(:resource, resource)
+         |> assign(:workspace_id, workspace_id)
+         |> assign(:file_url, ~p"/resources/#{resource.id}/file")
+         |> assign(:page_title, resource.title)
+         |> assign(:annotations, annotations)
+         |> assign(:focal_page, 1)
+         |> assign(:selection, nil)
+         |> assign(:annotation_form, nil)
+         |> assign(:annotation_form_type, nil)
+         |> assign(:active_annotation_id, nil)
+         |> assign(:expanded_thread_id, nil)
+         |> assign(:thread_replies, [])
+         |> assign(:reply_form, nil)
+         |> assign(:filter_type, :all)
+         |> assign(:milestones, milestones)
+         |> assign(:is_admin?, is_admin?)
+         |> assign(:total_readers, total_readers)
+         |> assign(:milestone_mode, false)
+         |> assign(:milestone_form, nil)
+         |> assign(:milestone_pending_placement, nil)}
 
       _ ->
         {:ok,
@@ -148,7 +125,7 @@ defmodule StudysyncWeb.PdfLive.Show do
               %{
                 file_url: @file_url,
                 total_pages: @resource.page_count,
-                annotations: svelte_annotations(@annotation_index),
+                annotations: svelte_annotations(@annotations),
                 milestone_markers: svelte_milestones(@milestones),
                 milestone_mode: @milestone_mode,
                 rubber_stamps: svelte_stamps(@milestones),
@@ -165,8 +142,8 @@ defmodule StudysyncWeb.PdfLive.Show do
       <aside class="w-[360px] shrink-0 bg-paper-2 border-l border-paper-2 flex flex-col">
         <header class="px-6 py-4 border-b border-paper-2/60 space-y-3">
           <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-            Margin · <span class="num">{filtered_count(@annotation_index, @filter_type)}</span>
-            of <span class="num">{length(@annotation_index)}</span>
+            Margin · <span class="num">{filtered_count(@annotations, @filter_type)}</span>
+            of <span class="num">{length(@annotations)}</span>
             notes
           </p>
 
@@ -175,7 +152,7 @@ defmodule StudysyncWeb.PdfLive.Show do
               :for={chip <- filter_chips()}
               type={chip.type}
               label={chip.label}
-              count={chip_count(@annotation_index, chip.type)}
+              count={chip_count(@annotations, chip.type)}
               active?={@filter_type == chip.type}
             />
           </nav>
@@ -207,26 +184,34 @@ defmodule StudysyncWeb.PdfLive.Show do
           />
 
           <p
-            :if={@annotation_index == [] and !@annotation_form}
+            :if={@annotations == [] and !@annotation_form}
             class="font-serif italic text-ink-soft"
           >
             Highlight a passage in the page to leave a note.
           </p>
 
           <p
-            :if={@annotation_index != [] and filtered_count(@annotation_index, @filter_type) == 0}
+            :if={@annotations != [] and filtered_count(@annotations, @filter_type) == 0}
             class="font-serif italic text-ink-soft"
           >
             No {filter_label(@filter_type)} on this book yet.
           </p>
 
-          <div id="margin-notes" phx-update="stream" class="space-y-2">
+          <%!--
+            Slice 15a (revert): single, stable list of every annotation in
+            the book, sorted by (page, inserted_at). Cards on the focal
+            page get a `bg-paper` background so they pop out of the
+            paper-2 column without the layout shifting as the reader
+            scrolls. Filter chips narrow this list in place.
+          --%>
+          <div id="margin-notes" class="space-y-2">
             <.margin_note
-              :for={{_dom_id, annotation} <- @streams.annotations}
+              :for={annotation <- visible_annotations(@annotations, @filter_type)}
               number={annotation.display_number}
               annotation={annotation}
               author_email={author_email(annotation)}
               active?={@active_annotation_id == annotation.id}
+              focal?={annotation.page_number == @focal_page}
               reply_count={annotation.reply_count}
               expanded?={@expanded_thread_id == annotation.id}
             >
@@ -560,84 +545,51 @@ defmodule StudysyncWeb.PdfLive.Show do
     end
   end
 
-  # Slice 15.1/15.2: Svelte's IntersectionObserver reports the page range
-  # currently in (or near) the viewport. We expand by `@prefetch_buffer` on
-  # each side, drop pages we've already loaded, and fetch the rest. New
-  # annotations stream in; previously-loaded ones aren't re-queried.
-  #
-  # Slice 15.3 hot-path discipline: when the visible range hasn't changed
-  # AND there's nothing new to load, return :noreply unchanged so we don't
-  # bump assigns and trigger a wasted re-render on every scroll.
-  def handle_event("pages_visible", %{"first" => first, "last" => last}, socket) do
-    actor = socket.assigns.current_user
+  # Slice 15a (revert): Svelte's IntersectionObserver reports which pages
+  # intersect the viewport. We just track the *first* visible page as
+  # `:focal_page`; the margin column highlights cards on that page via a
+  # background-color treatment (no zone re-shuffling, no DB hit).
+  def handle_event("pages_visible", %{"first" => first, "last" => _last}, socket) do
     total_pages = socket.assigns.resource.page_count
+    new_focal = first |> to_int() |> max(1) |> min(total_pages)
 
-    visible = clamp_range({to_int(first), to_int(last)}, total_pages)
-    prefetch = expand_range(visible, @prefetch_buffer, total_pages)
-
-    new_pages =
-      pages_in_range(prefetch, total_pages) -- MapSet.to_list(socket.assigns.loaded_pages)
-
-    if visible == socket.assigns.visible_pages and new_pages == [] do
+    if new_focal == socket.assigns.focal_page do
       {:noreply, socket}
     else
-      socket =
-        socket
-        |> assign(:visible_pages, visible)
-        |> load_pages(new_pages, actor)
-
-      {:noreply, socket}
+      {:noreply, assign(socket, :focal_page, new_focal)}
     end
   end
 
   def handle_event("set_filter", %{"type" => type}, socket) do
-    filter_type = parse_filter_type(type)
-
-    {:noreply,
-     socket
-     |> assign(:filter_type, filter_type)
-     |> stream(
-       :annotations,
-       margin_stream_items(socket.assigns, filter_type),
-       reset: true
-     )}
+    {:noreply, assign(socket, :filter_type, parse_filter_type(type))}
   end
 
   # Margin → PDF: clicking a margin note focuses the annotation. The Svelte
   # component reacts to the new `active_annotation_id` prop by scrolling its
   # source page into view and pulsing the marker.
-  #
-  # Slice 15.3 hot-path discipline: skip work when the click landed on the
-  # already-active note — re-streaming the same card is a wasted round-trip.
   def handle_event("select_annotation", %{"id" => id}, socket) do
-    prev = socket.assigns.active_annotation_id
-
-    if prev == id do
+    if socket.assigns.active_annotation_id == id do
       {:noreply, socket}
     else
-      {:noreply,
-       socket
-       |> assign(:active_annotation_id, id)
-       |> refresh_annotation(prev)
-       |> refresh_annotation(id)}
+      {:noreply, assign(socket, :active_annotation_id, id)}
     end
   end
 
   # PDF → Margin: clicking a marker in the canvas focuses the annotation and
-  # asks the margin column to scroll the matching card into view.
+  # asks the margin column to scroll the matching card into view. Also
+  # realigns `:focal_page` to that annotation's page so the focal-page
+  # background highlight follows immediately rather than waiting for the
+  # next IO tick.
   def handle_event("annotation_clicked", %{"id" => id}, socket) do
-    prev = socket.assigns.active_annotation_id
-
-    if prev == id do
-      # Same marker re-clicked — skip the assign churn but still nudge the
-      # margin to scroll into view (the user may have scrolled it off-screen).
+    if socket.assigns.active_annotation_id == id do
       {:noreply, push_event(socket, "scroll_to_margin_note", %{id: id})}
     else
+      page = annotation_page(socket.assigns.annotations, id)
+
       {:noreply,
        socket
        |> assign(:active_annotation_id, id)
-       |> refresh_annotation(prev)
-       |> refresh_annotation(id)
+       |> then(fn s -> if page, do: assign(s, :focal_page, page), else: s end)
        |> push_event("scroll_to_margin_note", %{id: id})}
     end
   end
@@ -661,10 +613,7 @@ defmodule StudysyncWeb.PdfLive.Show do
         |> assign(:reply_form, build_reply_form(id, actor))
       end
 
-    {:noreply,
-     socket
-     |> refresh_annotation(prev)
-     |> refresh_annotation(id)}
+    {:noreply, socket}
   end
 
   def handle_event("submit_reply", %{"form" => params}, socket) do
@@ -819,43 +768,30 @@ defmodule StudysyncWeb.PdfLive.Show do
     end)
   end
 
-  # Slice 15.1: insert a freshly-created annotation into both the index
-  # (drives Svelte markers + counts) and `annotations_by_id` (drives the
-  # margin stream). Re-streams every note on the affected page so per-page
-  # numbering stays correct: numbers shift when a new note lands at the
-  # bottom of an already-rendered page.
+  # Slice 15a (revert): insert a freshly-created annotation into the
+  # whole-book list, kept ordered by (page, inserted_at). Skips if we've
+  # already seen the id (PubSub double-fire from our own create).
   defp insert_annotation(socket, annotation) do
-    if Map.has_key?(socket.assigns.annotations_by_id, annotation.id) do
+    annotations = socket.assigns.annotations
+
+    if Enum.any?(annotations, &(&1.id == annotation.id)) do
       socket
     else
-      stub = annotation_stub(annotation)
-      index = socket.assigns.annotation_index ++ [stub]
-      by_id = Map.put(socket.assigns.annotations_by_id, annotation.id, annotation)
-      loaded_pages = MapSet.put(socket.assigns.loaded_pages, annotation.page_number)
-
-      socket
-      |> assign(:annotation_index, index)
-      |> assign(:annotations_by_id, by_id)
-      |> assign(:loaded_pages, loaded_pages)
-      |> restream_page(annotation.page_number)
+      assign(
+        socket,
+        :annotations,
+        sort_annotations([annotation | annotations])
+      )
     end
   end
 
   defp bump_reply_count(socket, annotation_id) do
-    case Map.get(socket.assigns.annotations_by_id, annotation_id) do
-      nil ->
-        socket
+    annotations =
+      Enum.map(socket.assigns.annotations, fn a ->
+        if a.id == annotation_id, do: %{a | reply_count: a.reply_count + 1}, else: a
+      end)
 
-      annotation ->
-        updated = %{annotation | reply_count: annotation.reply_count + 1}
-
-        socket
-        |> assign(
-          :annotations_by_id,
-          Map.put(socket.assigns.annotations_by_id, annotation_id, updated)
-        )
-        |> refresh_annotation(annotation_id)
-    end
+    assign(socket, :annotations, annotations)
   end
 
   defp append_reply_if_open(socket, reply) do
@@ -867,29 +803,7 @@ defmodule StudysyncWeb.PdfLive.Show do
         socket
 
       true ->
-        socket
-        |> assign(:thread_replies, socket.assigns.thread_replies ++ [reply])
-        |> refresh_annotation(reply.annotation_id)
-    end
-  end
-
-  # Streams don't auto-rerender items when outer assigns change. Anywhere a
-  # margin-note's content depends on `active_annotation_id`, `expanded_thread_id`,
-  # or `thread_replies`, push the affected card back through `stream_insert`.
-  defp refresh_annotation(socket, nil), do: socket
-
-  defp refresh_annotation(socket, id) do
-    case Map.get(socket.assigns.annotations_by_id, id) do
-      nil ->
-        socket
-
-      annotation ->
-        if visible_under_filter?(annotation, socket.assigns.filter_type) do
-          numbered = with_display_number(annotation, socket.assigns.annotation_index)
-          stream_insert(socket, :annotations, numbered)
-        else
-          socket
-        end
+        assign(socket, :thread_replies, socket.assigns.thread_replies ++ [reply])
     end
   end
 
@@ -897,72 +811,10 @@ defmodule StudysyncWeb.PdfLive.Show do
     Ash.get(Annotations.AnnotationComment, id, actor: actor, load: [:user])
   end
 
-  # Slice 15.1/15.2: hydrate full annotations for the given pages and merge
-  # them into `annotations_by_id`. The stream gets every newly loaded page's
-  # notes appended in `(page, inserted_at)` order so they slot in beside the
-  # already-rendered ones without re-streaming the whole margin column.
-  defp load_pages(socket, [], _actor), do: socket
-
-  defp load_pages(socket, pages, actor) do
-    fresh =
-      Annotations.list_annotations_for_pages(
-        socket.assigns.resource.id,
-        pages,
-        actor: actor
-      )
-
-    by_id =
-      Enum.reduce(fresh, socket.assigns.annotations_by_id, fn annotation, acc ->
-        Map.put(acc, annotation.id, annotation)
-      end)
-
-    loaded_pages =
-      Enum.reduce(pages, socket.assigns.loaded_pages, fn page, acc ->
-        MapSet.put(acc, page)
-      end)
-
-    socket
-    |> assign(:annotations_by_id, by_id)
-    |> assign(:loaded_pages, loaded_pages)
-    |> stream_insert_many(
-      filter_for_stream(fresh, socket.assigns.filter_type),
-      socket.assigns.annotation_index
-    )
-  end
-
-  defp stream_insert_many(socket, [], _index), do: socket
-
-  defp stream_insert_many(socket, annotations, index) do
-    Enum.reduce(annotations, socket, fn a, acc ->
-      stream_insert(acc, :annotations, with_display_number(a, index))
-    end)
-  end
-
-  defp init_stream(socket) do
-    items = margin_stream_items(socket.assigns, socket.assigns.filter_type)
-    stream(socket, :annotations, items, dom_id: &"margin-note-#{&1.id}")
-  end
-
-  # Re-stream every loaded annotation on `page` so per-page numbering stays
-  # in lockstep with the index after an insert.
-  defp restream_page(socket, page) do
-    %{annotations_by_id: by_id, annotation_index: index, filter_type: filter} = socket.assigns
-
-    by_id
-    |> Map.values()
-    |> Enum.filter(&(&1.page_number == page))
-    |> Enum.filter(&visible_under_filter?(&1, filter))
-    |> Enum.sort_by(& &1.inserted_at, DateTime)
-    |> Enum.reduce(socket, fn a, acc ->
-      stream_insert(acc, :annotations, with_display_number(a, index))
-    end)
-  end
-
-  defp margin_stream_items(assigns, filter_type) do
-    assigns.annotations_by_id
-    |> Map.values()
-    |> Enum.filter(&visible_under_filter?(&1, filter_type))
-    |> Enum.sort_by(&{&1.page_number, &1.inserted_at}, fn
+  # Whole-book sort: page first, inserted_at second. Stable for a given
+  # (page, inserted_at) pair so per-page numbering is deterministic.
+  defp sort_annotations(annotations) do
+    Enum.sort_by(annotations, &{&1.page_number, &1.inserted_at}, fn
       {p1, t1}, {p2, t2} ->
         cond do
           p1 < p2 -> true
@@ -970,66 +822,16 @@ defmodule StudysyncWeb.PdfLive.Show do
           true -> DateTime.compare(t1, t2) != :gt
         end
     end)
-    |> Enum.map(&with_display_number(&1, assigns.annotation_index))
   end
 
-  defp filter_for_stream(annotations, filter_type) do
-    annotations
-    |> Enum.filter(&visible_under_filter?(&1, filter_type))
-    |> Enum.sort_by(& &1.inserted_at, DateTime)
-  end
-
-  # Slice 15: per-page footnote numbering. Within a page, sort by
-  # inserted_at and use 1-based position. The index is authoritative — even
-  # for annotations whose page hasn't been hydrated yet, every annotation in
-  # the index gets a stable number that the canvas marker can render.
-  defp with_display_number(annotation, index) do
-    Map.put(annotation, :display_number, page_display_number(annotation, index))
-  end
-
-  defp page_display_number(annotation, index) do
-    index
-    |> Enum.filter(&(&1.page_number == annotation.page_number))
-    |> Enum.sort_by(& &1.inserted_at, DateTime)
-    |> Enum.find_index(&(&1.id == annotation.id))
-    |> case do
-      nil -> 1
-      i -> i + 1
+  # Look up an annotation's page from the loaded list. Falls back to nil
+  # for ids the actor can't read or that haven't reached us yet — caller
+  # treats that as "leave focal_page alone."
+  defp annotation_page(annotations, id) do
+    case Enum.find(annotations, &(&1.id == id)) do
+      %{page_number: page} -> page
+      _ -> nil
     end
-  end
-
-  # The index already carries `id`, `type`, `page_number`, `rect`,
-  # `inserted_at`, `user_id`, `visibility` — the same shape we get from the
-  # full record. After a local create we project back to that shape so the
-  # marker map stays consistent without us tracking two schemas.
-  defp annotation_stub(annotation) do
-    %{
-      id: annotation.id,
-      type: annotation.type,
-      page_number: annotation.page_number,
-      rect: annotation.rect,
-      inserted_at: annotation.inserted_at,
-      user_id: annotation.user_id,
-      visibility: annotation.visibility
-    }
-  end
-
-  # ---- range arithmetic (Slice 15.1/15.2) ----
-
-  defp pages_in_range({first, last}, total_pages) do
-    first = max(1, first)
-    last = min(last, total_pages)
-    if last < first, do: [], else: Enum.to_list(first..last)
-  end
-
-  defp clamp_range({first, last}, total_pages) do
-    first = max(1, first)
-    last = max(first, min(last, total_pages))
-    {first, last}
-  end
-
-  defp expand_range({first, last}, buffer, total_pages) do
-    {max(1, first - buffer), min(total_pages, last + buffer)}
   end
 
   defp to_int(n) when is_integer(n), do: n
@@ -1052,11 +854,10 @@ defmodule StudysyncWeb.PdfLive.Show do
     |> to_form()
   end
 
-  # Slice 15.1: markers are built from the lightweight index — every
-  # annotation visible to the actor, with per-page numbering. The body/text
-  # never crosses the wire to Svelte.
-  defp svelte_annotations(index) do
-    index
+  # Per-page numbered markers for the canvas. Body/text never crosses the
+  # wire to Svelte — the canvas only needs marker geometry.
+  defp svelte_annotations(annotations) do
+    annotations
     |> Enum.group_by(& &1.page_number)
     |> Enum.flat_map(fn {_page, page_annotations} ->
       page_annotations
@@ -1065,6 +866,29 @@ defmodule StudysyncWeb.PdfLive.Show do
       |> Enum.map(fn {a, idx} ->
         %{id: a.id, number: idx, page: a.page_number, rect: a.rect}
       end)
+    end)
+  end
+
+  # Filtered view of the full annotation list, with a per-page
+  # `:display_number` precomputed for the margin card's footnote marker.
+  # Used by the `:for` over `@annotations` in the margin column.
+  defp visible_annotations(annotations, filter_type) do
+    annotations
+    |> Enum.filter(&visible_under_filter?(&1, filter_type))
+    |> Enum.group_by(& &1.page_number)
+    |> Enum.flat_map(fn {_page, page_annotations} ->
+      page_annotations
+      |> Enum.sort_by(& &1.inserted_at, DateTime)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {a, idx} -> Map.put(a, :display_number, idx) end)
+    end)
+    |> Enum.sort_by(&{&1.page_number, &1.inserted_at}, fn
+      {p1, t1}, {p2, t2} ->
+        cond do
+          p1 < p2 -> true
+          p1 > p2 -> false
+          true -> DateTime.compare(t1, t2) != :gt
+        end
     end)
   end
 

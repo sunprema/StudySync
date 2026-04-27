@@ -35,9 +35,10 @@
   //   apply_stamp        → { milestone_id } when the user confirms a stamp from
   //                        the milestone popover.
   //   pages_visible      → { first, last } emitted (debounced) whenever the set
-  //                        of pages intersecting the viewport changes. Drives
-  //                        lazy hydration of annotation bodies on the LV side
-  //                        (Slice 15.1/15.2).
+  //                        of pages intersecting the viewport changes. The LV
+  //                        uses `first` as the focal page so the margin column
+  //                        can highlight cards on that page via background
+  //                        color. (added Slice 15; revised Slice 15a)
   let {
     file_url,
     total_pages = 0,

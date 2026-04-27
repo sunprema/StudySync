@@ -298,6 +298,27 @@ Hit the perf targets in CLAUDE.md §6 with real measurement, not vibes.
 
 ---
 
+## Slice 15a — Margin Column: single list with focal-page highlight
+
+> **Note (2026-04-27):** This slice was first delivered as a two-zone split ("This page" + "Across the book" with truncated summary cards). User testing rejected that direction: the truncated snippets didn't carry enough context, and the two zones made the layout reflow on every scroll. The slice was reworked to the simpler design captured below — a single, stable list of full margin notes with the focal page's cards highlighted by background color.
+
+Slice 15 (lazy load + per-page hydration) accidentally hid peer annotations outside the visible page range. Reading is meant to be social — a reader should always *see* what others marked, even on pages they haven't reached. This slice restores whole-book visibility while keeping the focal page visually distinct.
+
+Margin column is one stable, scrollable list of every annotation in the book, sorted by (page, inserted_at). Cards whose `page_number` matches `:focal_page` carry a `bg-paper` background that pops out of the surrounding `bg-paper-2` margin column; off-focal cards stay transparent. The reader's scroll updates `:focal_page` (via `pages_visible`), so the highlight follows the eye without any layout shift.
+
+- [x] **15a.1** Single eager whole-book load on mount via `Annotations.list_annotations_for_resource/2` (replaces the lazy-by-page hydration from 15.1). Loads `:user` and `:reply_count` so every margin card renders immediately without further round-trips. Cheap in practice — ~16ms p50 at 200 annotations (PERFORMANCE.md).
+- [x] **15a.2** `<.margin_note>` gains a `focal?` boolean attr. When true, the card adds `bg-paper` (alongside its existing border/type styling) plus a `data-focal-page="true"` data attribute for tests/inspection. Off-focal cards keep their existing transparent treatment.
+- [x] **15a.3** `:focal_page` assign in `PdfLive.Show`, derived from `pages_visible`'s `first` page. Also updated by `annotation_clicked` so a marker click on an off-focal page realigns the highlight instantly.
+- [x] **15a.4** Margin column rendered as a single `:for` over `visible_annotations(@annotations, @filter_type)` — page+inserted_at sorted, per-page footnote numbering computed in place, `focal?={a.page_number == @focal_page}` threaded through. No streams; no zone split; no layout shift on scroll.
+- [x] **15a.5** `pages_visible` is now a focal-page-update-only event — no DB hit, no stream churn. Returns `{:noreply, socket}` unchanged when focal hasn't moved.
+- [x] **15a.6** CLAUDE.md §4.3 updated: `pages_visible` description revised; the `scroll_to_page` LV→Svelte event from the first cut of 15a was removed (no longer needed).
+- [x] **15a.7** Reverted summary-card components: `<.margin_summary_card>` and `<.margin_page_group_header>` deleted along with the `scroll_to_summary_page` event handler. Annotation index helpers (`list_annotation_index/2`, `list_annotations_for_pages/3`) kept as building blocks for future slices and used by `priv/scripts/perf_pass.exs`.
+- [x] **15a.8** Filter chips work over the single list — `visible_annotations/2` applies the filter; the "X of Y notes" header still reflects global counts.
+- [x] **15a.9** Tests rewritten as `Slice 15a — single-list margin with focal-page highlight`: every annotation renders as a full margin_note, focal card carries `data-focal-page="true"`, scroll flips the focal flag without losing any cards from the DOM, `pages_visible` is a no-op when focal is unchanged, per-page numbering still resets at each page.
+- [ ] **15a.10** Visual review against design Direction 01: confirm the single-list + focal-bg treatment matches the airy-margin metaphor. Pending — needs a browser session with a real multi-page PDF.
+
+---
+
 ## Slice 16 — UX Polish
 
 Final pass to match the design fidelity. This is where the product earns its aesthetic.
@@ -348,5 +369,6 @@ When a slice closes (all items checked), append a one-line entry here:
 - Slice 13 — Rubber Stamps — closed 2026-04-27 (Slice 11 still deferred)
 - Slice 14 — Visibility & Privacy Polish — closed 2026-04-27 (Slice 11 still deferred)
 - Slice 15 — Performance Pass — closed 2026-04-27 (Slice 11 still deferred)
+- Slice 15a — Margin Column: This Page + Across the Book — closed 2026-04-27 (15a.10 visual review pending; Slice 11 still deferred)
 - ...
 ```

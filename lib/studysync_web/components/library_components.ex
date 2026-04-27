@@ -65,6 +65,7 @@ defmodule StudysyncWeb.LibraryComponents do
   attr :annotation, :map, required: true
   attr :author_email, :string, default: nil
   attr :active?, :boolean, default: false
+  attr :focal?, :boolean, default: false
   attr :reply_count, :integer, default: 0
   attr :expanded?, :boolean, default: false
   slot :thread
@@ -75,13 +76,15 @@ defmodule StudysyncWeb.LibraryComponents do
       id={"margin-note-#{@annotation.id}"}
       data-annotation-id={@annotation.id}
       data-annotation-type={@annotation.type}
+      data-focal-page={if @focal?, do: "true", else: "false"}
       class={[
-        "pl-4 py-3 cursor-pointer transition-colors",
+        "px-4 py-3 cursor-pointer transition-colors rounded-sm",
         "border-l-2",
-        if(@active?,
-          do: "border-terracotta bg-paper/60",
-          else: type_border_class(@annotation.type)
-        )
+        cond do
+          @active? -> "border-terracotta bg-paper"
+          @focal? -> "bg-paper " <> type_border_class(@annotation.type)
+          true -> type_border_class(@annotation.type)
+        end
       ]}
       phx-click={JS.push("select_annotation", value: %{id: @annotation.id})}
       phx-mouseover={

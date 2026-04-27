@@ -223,6 +223,10 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
   end
 
   describe "bi-directional sync (Slice 5)" do
+    # Slice 15a — both annotations live on page 1 so they both render as
+    # full margin_note cards in the "This page" zone. The cross-page
+    # behavior (a click on a non-focal annotation should jump focal_page)
+    # is exercised by its own Slice 15a tests below.
     setup %{user: user, resource: resource} do
       {:ok, a1} =
         Annotations.create_comment(
@@ -237,7 +241,7 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       {:ok, a2} =
         Annotations.create_comment(
           resource.id,
-          2,
+          1,
           %{"x" => 0.2, "y" => 0.4, "width" => 0.2, "height" => 0.05},
           "second snippet",
           "second body",
@@ -627,7 +631,7 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       {:ok, view, html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
 
-      # All three are present at mount (filter = :all).
+      # All three render as full margin_notes in the single list (Slice 15a).
       assert html =~ "id=\"margin-note-#{c.id}\""
       assert html =~ "id=\"margin-note-#{q.id}\""
       assert html =~ "id=\"margin-note-#{p.id}\""
@@ -637,7 +641,7 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
         |> element(~s(button[phx-value-type="question"]))
         |> render_click()
 
-      # Only the question card remains; the others are stream-removed.
+      # Only the question card survives the filter.
       assert filtered =~ "id=\"margin-note-#{q.id}\""
       refute filtered =~ "id=\"margin-note-#{c.id}\""
       refute filtered =~ "id=\"margin-note-#{p.id}\""
@@ -1142,10 +1146,8 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
     end
   end
 
-  describe "Slice 15 — lazy annotation loading" do
-    # Six-page PDF — long enough that the default initial visible range
-    # (pages 1..3) does *not* cover the whole resource, so lazy loading
-    # is actually exercised.
+  describe "Slice 15a — single-list margin with focal-page highlight" do
+    # Six-page PDF so we can exercise focal-page transitions across the book.
     @six_page_pdf """
     %PDF-1.4
     1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
@@ -1186,41 +1188,68 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       %{long_resource: resource, near: near, far: far}
     end
 
-    test "mount renders only annotations within the initial visible range",
+    test "every annotation renders as a full margin note regardless of page",
          %{conn: conn, user: user, workspace: ws, long_resource: r, near: near, far: far} do
-      assert r.page_count == 6
-
       {:ok, _view, html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
 
-      # The page-1 annotation is in the initial range (pages 1..3) and renders.
+      # Both annotations are full margin_note cards with body in the DOM —
+      # no truncation, no zone split. The reader sees every peer mark in
+      # the book at once.
       assert html =~ "id=\"margin-note-#{near.id}\""
       assert html =~ "page-1 body"
+      assert html =~ "id=\"margin-note-#{far.id}\""
+      assert html =~ "page-5 body"
 
-      # The page-5 annotation is *outside* the initial range — its body is
-      # not in the DOM yet (lazy-loaded on `pages_visible`).
-      refute html =~ "id=\"margin-note-#{far.id}\""
-      refute html =~ "page-5 body"
-
-      # But the header counts come from the lightweight index — both
-      # annotations are reflected in "X of Y".
       assert html =~
                ~r{Margin · <span class="num">2</span>\s*of\s*<span class="num">2</span>\s*notes}
     end
 
-    test "pages_visible event hydrates the requested range and the new card appears",
-         %{conn: conn, user: user, workspace: ws, long_resource: r, far: far} do
+    test "focal-page card carries the bg-paper highlight; off-focal cards don't",
+         %{conn: conn, user: user, workspace: ws, long_resource: r, near: near, far: far} do
+      {:ok, _view, html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # focal_page = 1 at mount → page-1 card carries `data-focal-page="true"`.
+      assert Regex.match?(
+               ~r{id="margin-note-#{near.id}"[^>]*data-focal-page="true"},
+               html
+             )
+
+      # Page-5 card is off-focal — `data-focal-page="false"`.
+      assert Regex.match?(
+               ~r{id="margin-note-#{far.id}"[^>]*data-focal-page="false"},
+               html
+             )
+    end
+
+    test "pages_visible flips focal_page → highlight follows the reader's scroll",
+         %{conn: conn, user: user, workspace: ws, long_resource: r, near: near, far: far} do
       {:ok, view, _html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
 
-      # Simulate the canvas reporting the user has scrolled into pages 4..5.
-      after_scroll = render_hook(view, "pages_visible", %{"first" => 4, "last" => 5})
+      # Reader scrolls to page 5. focal_page flips, so the page-5 card now
+      # carries the focal flag and the page-1 card loses it. Critically,
+      # both cards are still rendered as full margin_notes — the layout
+      # doesn't shift.
+      after_scroll = render_hook(view, "pages_visible", %{"first" => 5, "last" => 5})
 
-      assert after_scroll =~ "id=\"margin-note-#{far.id}\""
+      assert Regex.match?(
+               ~r{id="margin-note-#{far.id}"[^>]*data-focal-page="true"},
+               after_scroll
+             )
+
+      assert Regex.match?(
+               ~r{id="margin-note-#{near.id}"[^>]*data-focal-page="false"},
+               after_scroll
+             )
+
+      # Bodies still in the DOM for both — single stable list.
+      assert after_scroll =~ "page-1 body"
       assert after_scroll =~ "page-5 body"
     end
 
-    test "pages_visible is a no-op when nothing new needs loading",
+    test "pages_visible is a no-op when focal_page is unchanged",
          %{conn: conn, user: user, workspace: ws, long_resource: r} do
       {:ok, view, _html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
@@ -1228,10 +1257,8 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       first = render_hook(view, "pages_visible", %{"first" => 1, "last" => 2})
       second = render_hook(view, "pages_visible", %{"first" => 1, "last" => 2})
 
-      # Re-reporting the same range with everything already loaded must
-      # produce an identical response — the `:noreply, socket` short-circuit
-      # in the handler avoids a wasteful re-render. Using the markup
-      # equality is a structural proxy for "no diff was sent."
+      # Re-reporting an unchanged range hits the early-return — no diff
+      # bumped on the wire.
       assert first == second
     end
 
@@ -1239,24 +1266,23 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
          %{conn: conn, user: user, workspace: ws, long_resource: r} do
       rect = %{"x" => 0.1, "y" => 0.2, "width" => 0.3, "height" => 0.05}
 
+      # Two on page 1, one on page 2 → page 1 has ¹ ², page 2 has ¹.
       {:ok, _} =
         Annotations.create_comment(r.id, 1, rect, "p1-second", "another on page 1", actor: user)
 
       {:ok, _} =
         Annotations.create_comment(r.id, 2, rect, "p2-first", "first on page 2", actor: user)
 
-      {:ok, view, _html} =
+      {:ok, _view, html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
 
-      # Pages 1 and 2 are both in the initial visible range. The first
-      # annotation on each page renders as ¹, the second on page 1 as ².
-      html = render(view)
-
-      # Snippet check — each page's first annotation gets number 1, not
-      # globally-incremented numbers (which would put the page-2 first
-      # annotation at number 3).
-      page_1_first_marker = ~r{<sup[^>]*>\s*1\s*</sup>}
-      assert Regex.scan(page_1_first_marker, html) |> length() >= 2
+      # Both pages are now in a single list. We expect ¹ at least twice
+      # (once per page) and ² once (the second page-1 annotation).
+      assert Regex.scan(~r{<sup[^>]*>\s*1\s*</sup>}, html) |> length() >= 2
+      assert Regex.match?(~r{<sup[^>]*>\s*2\s*</sup>}, html)
+      # No ³ — global numbering would have produced one for the page-2
+      # first annotation.
+      refute Regex.match?(~r{<sup[^>]*>\s*3\s*</sup>}, html)
     end
   end
 
