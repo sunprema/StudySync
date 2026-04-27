@@ -69,7 +69,11 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   def render(assigns) do
     ~H"""
-    <div class="flex h-screen w-full bg-paper text-ink overflow-hidden">
+    <div
+      class="flex h-screen w-full bg-paper text-ink overflow-hidden"
+      phx-window-keydown="reader_keydown"
+      phx-key="Escape"
+    >
       <.chapter_rail />
 
       <main class="flex-1 min-w-0 flex flex-col">
@@ -183,19 +187,16 @@ defmodule StudysyncWeb.PdfLive.Show do
             type={@annotation_form_type}
           />
 
-          <p
+          <.empty_state
             :if={@annotations == [] and !@annotation_form}
-            class="font-serif italic text-ink-soft"
-          >
-            Highlight a passage in the page to leave a note.
-          </p>
+            kind={:no_annotations}
+          />
 
-          <p
+          <.empty_state
             :if={@annotations != [] and filtered_count(@annotations, @filter_type) == 0}
-            class="font-serif italic text-ink-soft"
-          >
-            No {filter_label(@filter_type)} on this book yet.
-          </p>
+            kind={:no_filtered}
+            label={filter_label(@filter_type)}
+          />
 
           <%!--
             Slice 15a (revert): single, stable list of every annotation in
@@ -354,6 +355,54 @@ defmodule StudysyncWeb.PdfLive.Show do
     """
   end
 
+  # Slice 16.4 — quiet line-drawn empty state. Two flavours: the
+  # "no annotations yet" prompt that nudges the reader to highlight a
+  # passage, and the "no comments/questions/puzzles on this book yet"
+  # variant that sits under the filter chips when the active filter
+  # produces nothing. SVG only — no emoji per CLAUDE.md §5.4.
+  attr :kind, :atom, values: [:no_annotations, :no_filtered], required: true
+  attr :label, :string, default: nil
+
+  defp empty_state(assigns) do
+    ~H"""
+    <section
+      role="note"
+      aria-live="polite"
+      class="flex flex-col items-center text-center px-4 py-10 gap-4"
+    >
+      <svg
+        viewBox="0 0 96 96"
+        aria-hidden="true"
+        focusable="false"
+        class="w-20 h-20 text-ink-soft/60"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M22 18 L22 80" />
+        <path d="M22 18 C 38 12, 50 12, 60 18 L 60 80 C 50 74, 38 74, 22 80 Z" />
+        <path d="M28 30 L 54 30" />
+        <path d="M28 38 L 50 38" />
+        <path d="M28 46 L 52 46" />
+        <path d="M70 28 L 80 28" stroke="currentColor" />
+        <path d="M70 36 L 78 36" />
+        <path d="M70 44 L 80 44" />
+        <circle cx="68" cy="56" r="2" fill="currentColor" stroke="none" />
+      </svg>
+      <p class="font-serif italic text-ink-soft text-sm leading-relaxed max-w-[18rem]">
+        <%= case @kind do %>
+          <% :no_annotations -> %>
+            No notes yet. Highlight a passage in the page to leave the first one.
+          <% :no_filtered -> %>
+            No {@label} on this book yet. Try a different filter, or start one.
+        <% end %>
+      </p>
+    </section>
+    """
+  end
+
   attr :type, :atom, required: true
   attr :label, :string, required: true
   attr :count, :integer, default: 0
@@ -424,6 +473,44 @@ defmodule StudysyncWeb.PdfLive.Show do
      |> assign(:annotation_form, nil)
      |> assign(:annotation_form_type, nil)}
   end
+
+  # Slice 16.6 — Escape closes whatever open chrome is in the margin
+  # column. Order matters: the canvas's selection menu / milestone popover
+  # are handled inside the Svelte component, so by the time we get here
+  # the user has either no canvas chrome open, or both. We close the LV
+  # forms in priority order: annotation form > milestone form > expanded
+  # thread, so a single Escape unwinds one level at a time.
+  def handle_event("reader_keydown", %{"key" => "Escape"}, socket) do
+    cond do
+      socket.assigns.annotation_form ->
+        {:noreply,
+         socket
+         |> assign(:selection, nil)
+         |> assign(:annotation_form, nil)
+         |> assign(:annotation_form_type, nil)}
+
+      socket.assigns.milestone_form ->
+        {:noreply,
+         socket
+         |> assign(:milestone_form, nil)
+         |> assign(:milestone_pending_placement, nil)}
+
+      socket.assigns.milestone_mode ->
+        {:noreply, assign(socket, :milestone_mode, false)}
+
+      socket.assigns.expanded_thread_id ->
+        {:noreply,
+         socket
+         |> assign(:expanded_thread_id, nil)
+         |> assign(:thread_replies, [])
+         |> assign(:reply_form, nil)}
+
+      true ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("reader_keydown", _params, socket), do: {:noreply, socket}
 
   def handle_event("toggle_milestone_mode", _params, socket) do
     if socket.assigns.is_admin? do

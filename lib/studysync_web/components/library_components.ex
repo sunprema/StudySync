@@ -77,9 +77,14 @@ defmodule StudysyncWeb.LibraryComponents do
       data-annotation-id={@annotation.id}
       data-annotation-type={@annotation.type}
       data-focal-page={if @focal?, do: "true", else: "false"}
+      role="button"
+      tabindex="0"
+      aria-label={"Annotation #{@number} on page #{@annotation.page_number}"}
+      aria-pressed={to_string(@active?)}
       class={[
         "px-4 py-3 cursor-pointer transition-colors rounded-sm",
         "border-l-2",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-terracotta/60 focus-visible:ring-offset-1 focus-visible:ring-offset-paper-2",
         cond do
           @active? -> "border-terracotta bg-paper"
           @focal? -> "bg-paper " <> type_border_class(@annotation.type)
@@ -87,6 +92,8 @@ defmodule StudysyncWeb.LibraryComponents do
         end
       ]}
       phx-click={JS.push("select_annotation", value: %{id: @annotation.id})}
+      phx-keydown={JS.push("select_annotation", value: %{id: @annotation.id})}
+      phx-key="Enter"
       phx-mouseover={
         JS.dispatch("studysync:annotation-hover",
           to: "body",
@@ -94,6 +101,13 @@ defmodule StudysyncWeb.LibraryComponents do
         )
       }
       phx-mouseout={JS.dispatch("studysync:annotation-hover", to: "body", detail: %{id: nil})}
+      phx-focus={
+        JS.dispatch("studysync:annotation-hover",
+          to: "body",
+          detail: %{id: @annotation.id}
+        )
+      }
+      phx-blur={JS.dispatch("studysync:annotation-hover", to: "body", detail: %{id: nil})}
     >
       <div class="flex items-baseline gap-2 mb-1 flex-wrap">
         <.footnote_marker number={@number} class="!text-[0.85rem]" />

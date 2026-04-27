@@ -33,12 +33,54 @@ import Components from "virtual:live-svelte-components"
 // matching margin note into view. Pairs with PdfCanvasRenderer's reverse
 // effect (active_annotation_id → page scroll) to give the bi-directional sync
 // a low-latency feel without round-tripping for hover.
+//
+// Slice 16:
+//   - 16.2: brief pulse animation on the destination card, mirroring the
+//     marker-pulse in the canvas so navigation lands with a visible cue in
+//     both directions.
+//   - 16.3: listen on `studysync:annotation-hover` to dim non-matching margin
+//     notes when a marker is hovered. Margin → canvas already works the
+//     other way (each card dispatches the same event); this completes the
+//     reverse direction without a server round-trip.
 const MarginColumn = {
   mounted() {
+    this._pulseTimer = null
+
     this.handleEvent("scroll_to_margin_note", ({id}) => {
       const el = this.el.querySelector(`#margin-note-${id}`)
-      if (el) el.scrollIntoView({behavior: "smooth", block: "center"})
+      if (!el) return
+      el.scrollIntoView({behavior: "smooth", block: "center"})
+      this._pulse(el)
     })
+
+    this._onHover = (e) => {
+      const id = e.detail?.id ?? null
+      this.el.querySelectorAll("[data-annotation-id]").forEach((card) => {
+        if (id == null) {
+          card.classList.remove("is-dim")
+        } else if (card.dataset.annotationId === id) {
+          card.classList.remove("is-dim")
+        } else {
+          card.classList.add("is-dim")
+        }
+      })
+    }
+    document.addEventListener("studysync:annotation-hover", this._onHover)
+  },
+
+  destroyed() {
+    if (this._pulseTimer) clearTimeout(this._pulseTimer)
+    if (this._onHover) document.removeEventListener("studysync:annotation-hover", this._onHover)
+  },
+
+  _pulse(el) {
+    el.classList.remove("is-pulse")
+    // Force a reflow so re-adding the class restarts the animation when the
+    // user clicks the same marker twice in quick succession.
+    void el.offsetWidth
+    el.classList.add("is-pulse")
+    if (this._pulseTimer) clearTimeout(this._pulseTimer)
+    this._pulseTimer = setTimeout(() => el.classList.remove("is-pulse"), 1200)
   },
 }
 

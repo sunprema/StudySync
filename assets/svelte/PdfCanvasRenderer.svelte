@@ -274,6 +274,77 @@
     return () => scrollEl.removeEventListener("wheel", onWheel);
   });
 
+  // Slice 16.6 — keyboard shortcuts. Document-level so the user doesn't
+  // need to focus the canvas first; we early-out when the focus is in an
+  // input/textarea so typing into a reply form or the milestone label
+  // input doesn't accidentally page-nav.
+  //
+  //   J / ArrowDown → next page (smooth scroll)
+  //   K / ArrowUp   → previous page
+  //   N             → "Add comment" on the current selection (if any)
+  //   Escape        → close selection menu / milestone popover. (Forms
+  //                   in the margin column are closed by the LV via its
+  //                   own phx-window-keydown handler, since the form DOM
+  //                   doesn't live in this component.)
+  $effect(() => {
+    if (!scrollEl) return;
+
+    const onKey = (e) => {
+      const tag = e.target?.tagName;
+      const editable =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        e.target?.isContentEditable;
+
+      if (e.key === "Escape") {
+        let consumed = false;
+        if (milestonePopover) {
+          closeMilestonePopover();
+          consumed = true;
+        }
+        if (selectionMenu) {
+          selectionMenu = null;
+          window.getSelection()?.removeAllRanges();
+          consumed = true;
+        }
+        if (consumed) e.preventDefault();
+        return;
+      }
+
+      if (editable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        scrollByPage(1);
+      } else if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        scrollByPage(-1);
+      } else if (e.key === "n" || e.key === "N") {
+        if (selectionMenu) {
+          e.preventDefault();
+          commitSelection(e, "comment");
+        }
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+
+  function scrollByPage(direction) {
+    if (!scrollEl) return;
+    const total = pages.length;
+    if (total === 0) return;
+    const next = Math.min(total, Math.max(1, currentPage + direction));
+    if (next === currentPage) return;
+    const slot = pages[next - 1];
+    if (slot?.container) {
+      slot.container.scrollIntoView({ behavior: "smooth", block: "start" });
+      currentPage = next;
+    }
+  }
+
   // Watch the document's selection so we can show the floating "Add Comment"
   // button whenever the user has a non-empty selection inside one of our pages.
   $effect(() => {
@@ -418,6 +489,18 @@
     e.preventDefault();
     e.stopPropagation();
     pushEvent("annotation_clicked", { id });
+  }
+
+  // Slice 16.3 — hover-linking, PDF → margin direction. The margin column
+  // dispatches the same event when a card is hovered; emitting it here
+  // lets the MarginColumn JS hook dim non-matching cards and the canvas
+  // dim non-matching markers (via the `hoveredAnnotationId` state, which
+  // also listens on document for the same event). One DOM event, both
+  // directions, no LV round-trip.
+  function dispatchMarkerHover(id) {
+    document.dispatchEvent(
+      new CustomEvent("studysync:annotation-hover", { detail: { id } }),
+    );
   }
 
   // Admin-only milestone placement (Slice 12). When `milestone_mode` is true
@@ -570,6 +653,17 @@
       <p class="error">Couldn't load this PDF: {loadError}</p>
     {/if}
 
+    <!-- Slice 16.5 — quiet loading skeleton while PDF.js fetches the
+         document. Two empty page rectangles with a subtle shimmer give
+         the user a stable layout to anchor their eye while the real
+         pages stream in. Pages already render incrementally via the
+         IntersectionObserver, so this only shows pre-onMount. -->
+    {#if !loadError && pages.length === 0}
+      <div class="skeleton-page" aria-hidden="true"></div>
+      <div class="skeleton-page" aria-hidden="true"></div>
+      <p class="loading-text" role="status" aria-live="polite">Loading book…</p>
+    {/if}
+
     {#each pages as p (p.pageNum)}
       <div
         class="page"
@@ -601,8 +695,12 @@
               data-annotation-id={a.id}
               style:left="{(a.rect.x + a.rect.width) * 100}%"
               style:top="{a.rect.y * 100}%"
-              aria-label="Annotation {a.number}"
+              aria-label="Annotation {a.number}, page {a.page}"
               onclick={(e) => onMarkerClick(e, a.id)}
+              onmouseenter={() => dispatchMarkerHover(a.id)}
+              onmouseleave={() => dispatchMarkerHover(null)}
+              onfocus={() => dispatchMarkerHover(a.id)}
+              onblur={() => dispatchMarkerHover(null)}
             >
               <sup>{a.number}</sup>
             </button>
@@ -1156,5 +1254,43 @@
     font-family: var(--font-serif);
     color: var(--color-terracotta);
     padding: 2rem;
+  }
+
+  /* Slice 16.5 — initial-load skeleton. The page rectangles use the same
+     box-shadow outline real pages get, so the layout doesn't jump as the
+     real pages take their place. The shimmer is intentionally slow and
+     low-contrast to match the quiet aesthetic. */
+  .skeleton-page {
+    width: min(70ch, 90%);
+    height: 80vh;
+    background: linear-gradient(
+      90deg,
+      var(--color-paper) 0%,
+      color-mix(in srgb, var(--color-paper-2) 60%, var(--color-paper)) 50%,
+      var(--color-paper) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 2.4s ease-in-out infinite;
+    box-shadow: 0 0 0 1px var(--color-paper-2);
+    flex-shrink: 0;
+  }
+
+  .loading-text {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--color-ink-soft);
+    padding: 1rem;
+  }
+
+  @keyframes skeleton-shimmer {
+    0%,
+    100% {
+      background-position: 100% 0;
+    }
+    50% {
+      background-position: 0 0;
+    }
   }
 </style>

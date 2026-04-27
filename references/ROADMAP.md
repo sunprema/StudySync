@@ -323,15 +323,24 @@ Margin column is one stable, scrollable list of every annotation in the book, so
 
 Final pass to match the design fidelity. This is where the product earns its aesthetic.
 
-- [ ] **16.1** Smooth scrolling between PDF and margin (eased, not snap)
-- [ ] **16.2** Highlight pulse animation on annotation navigation
-- [ ] **16.3** Hover linking between PDF markers and margin notes
-- [ ] **16.4** Empty states: "No annotations yet" with quiet illustration
-- [ ] **16.5** Loading skeletons in margin column during page transitions
-- [ ] **16.6** Keyboard shortcuts: `J/K` page nav, `N` new annotation on selection, `Esc` close
-- [ ] **16.7** Accessibility pass: focus rings, aria-labels on interactive elements, keyboard navigability
+- [x] **16.1** Smooth scrolling between PDF and margin (eased, not snap)
+  - Both directions use `scrollIntoView({behavior: "smooth"})` — the canvas's `active_annotation_id` effect (PDF→margin's source page scroll) and the `MarginColumn` JS hook (margin column scroll on `scroll_to_margin_note`). Keyboard page-nav (16.6 J/K) also routes through `scrollByPage`, which uses the same easing.
+- [x] **16.2** Highlight pulse animation on annotation navigation
+  - Marker pulse already lived in the canvas (`marker-pulse` keyframes). Added the matching `margin-note-pulse` keyframes in `assets/css/app.css` and wired the `MarginColumn` hook to toggle `is-pulse` on the destination card after `scrollIntoView`. Re-clicking the same marker forces a reflow so the animation restarts.
+- [x] **16.3** Hover linking between PDF markers and margin notes
+  - Margin → PDF dim was already there. Added the reverse: the canvas marker dispatches `studysync:annotation-hover` on `mouseenter/mouseleave/focus/blur`. The `MarginColumn` hook listens on `document` and toggles an `.is-dim` class on non-matching `[data-annotation-id]` cards — pure client-side, no LV round-trip. Same DOM event, both directions.
+- [x] **16.4** Empty states: "No annotations yet" with quiet illustration
+  - New `empty_state/1` private component on `PdfLive.Show` renders a line-drawn SVG of a notebook page with margin marks (no emoji per CLAUDE.md §5.4) plus an italic prompt. Two flavours: `:no_annotations` (book is unannotated) and `:no_filtered` (filter chips produce nothing).
+- [x] **16.5** Loading skeletons in margin column during page transitions
+  - Page-transition data fetches went away in Slice 15a (whole-book eager load), so the residual loading state is the initial PDF.js fetch. Added two `.skeleton-page` rectangles + a `Loading book…` mono-caps message inside the canvas's scroll area, shown only when `pages.length === 0 && !loadError`. They share the page rectangle's `box-shadow` outline so the layout doesn't jump as real pages arrive.
+- [x] **16.6** Keyboard shortcuts: `J/K` page nav, `N` new annotation on selection, `Esc` close
+  - Document-level keydown listener inside the canvas (`onKey` $effect) handles J/ArrowDown (next page, smooth), K/ArrowUp (prev page), N (commit current selection as comment when the floating menu is open), and Escape (close popover/selection menu). Editable focus (input/textarea/contenteditable) and modifier-key combos are skipped so reply forms and zoom-by-wheel still work. The LV side adds `phx-window-keydown="reader_keydown" phx-key="Escape"` and unwinds open chrome in priority order: annotation form → milestone form → milestone mode → expanded thread.
+- [x] **16.7** Accessibility pass: focus rings, aria-labels on interactive elements, keyboard navigability
+  - `<.margin_note>` is now `role="button" tabindex="0"` with Enter activation (`phx-keydown` + `phx-key="Enter"`), an `aria-label` that names the annotation + page, and `aria-pressed` reflecting active state. Focus-visible terracotta ring added (Tailwind utility) so keyboard users can see what's focused. Canvas markers now expose `aria-label="Annotation N, page P"` and dispatch hover events on `focus/blur` too — keyboard tabbing through markers gets the same dim-other-cards treatment as mouse hover.
 - [ ] **16.8** Side-by-side review against the design PDF — capture deltas, fix
+  - Pending — needs a browser session with `Direction 01_StudySync_Design Explorations.pdf` pages 2–5 open alongside the dev server.
 - [ ] **16.9** Final manual QA on the core loop: Read → Highlight → Annotate → Discuss → AI → Save → Progress
+  - Pending — Slice 11 (AI) is still deferred, so the AI step in this loop will only become QA-able once that ships. Everything else (Read → Highlight → Annotate → Discuss → Save → Progress) is browser-verifiable now.
 
 ---
 
@@ -370,5 +379,6 @@ When a slice closes (all items checked), append a one-line entry here:
 - Slice 14 — Visibility & Privacy Polish — closed 2026-04-27 (Slice 11 still deferred)
 - Slice 15 — Performance Pass — closed 2026-04-27 (Slice 11 still deferred)
 - Slice 15a — Margin Column: This Page + Across the Book — closed 2026-04-27 (15a.10 visual review pending; Slice 11 still deferred)
+- Slice 16 — UX Polish — closed 2026-04-27 (16.8 design-PDF review and 16.9 core-loop QA pending — both need a browser session; Slice 11 still deferred so the AI step of 16.9 is gated on it)
 - ...
 ```
