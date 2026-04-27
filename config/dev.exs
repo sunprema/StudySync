@@ -1,4 +1,5 @@
 import Config
+config :live_svelte, ssr_module: LiveSvelte.SSR.ViteJS, vite_host: "http://localhost:5173"
 config :ash, policies: [show_policy_breakdowns?: true]
 
 # Configure your database
@@ -7,6 +8,7 @@ config :studysync, Studysync.Repo,
   password: "postgres",
   hostname: "localhost",
   database: "studysync_dev",
+  port: 5433,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
@@ -25,10 +27,8 @@ config :studysync, StudysyncWeb.Endpoint,
   code_reloader: true,
   debug_errors: true,
   secret_key_base: "fnHeQXFkapygZVDMDlNXkF15TlBuiAutSj20m3DAWZ4PF/Tu1xtPgDPyHXiuGDqS",
-  watchers: [
-    esbuild: {Esbuild, :install_and_run, [:studysync, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:studysync, ~w(--watch)]}
-  ]
+  watchers: [vite: {PhoenixVite.Npm, :run, [:vite, ~w(dev)]}],
+  static_url: [host: "localhost", port: 5173]
 
 # ## SSL Support
 #

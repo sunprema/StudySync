@@ -1,5 +1,6 @@
 defmodule StudysyncWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :studysync
+  import PhoenixVite.Plug
 
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
@@ -15,6 +16,8 @@ defmodule StudysyncWeb.Endpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 
+  plug :favicon, dev_server: {PhoenixVite.Components, :has_vite_watcher?, [__MODULE__]}
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),
@@ -29,6 +32,10 @@ defmodule StudysyncWeb.Endpoint do
 
   if Mix.env() == :dev do
     plug Tidewave
+  end
+
+  if Code.ensure_loaded?(LiveAgent) do
+    plug LiveAgent
   end
 
   # Code reloading can be explicitly enabled under the

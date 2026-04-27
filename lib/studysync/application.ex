@@ -7,22 +7,31 @@ defmodule Studysync.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      StudysyncWeb.Telemetry,
-      Studysync.Repo,
-      {DNSCluster, query: Application.get_env(:studysync, :dns_cluster_query) || :ignore},
-      {Oban,
-       AshOban.config(
-         Application.fetch_env!(:studysync, :ash_domains),
-         Application.fetch_env!(:studysync, Oban)
-       )},
-      {Phoenix.PubSub, name: Studysync.PubSub},
-      # Start a worker by calling: Studysync.Worker.start_link(arg)
-      # {Studysync.Worker, arg},
-      # Start to serve requests, typically the last entry
-      StudysyncWeb.Endpoint,
-      {AshAuthentication.Supervisor, [otp_app: :studysync]}
-    ]
+    node_js_children =
+      if Application.get_env(:live_svelte, :ssr_module, nil) == LiveSvelte.SSR.NodeJS do
+        [{NodeJS.Supervisor, [path: LiveSvelte.SSR.NodeJS.server_path(), pool_size: 4]}]
+      else
+        []
+      end
+
+    children =
+      node_js_children ++
+        [
+          StudysyncWeb.Telemetry,
+          Studysync.Repo,
+          {DNSCluster, query: Application.get_env(:studysync, :dns_cluster_query) || :ignore},
+          {Oban,
+           AshOban.config(
+             Application.fetch_env!(:studysync, :ash_domains),
+             Application.fetch_env!(:studysync, Oban)
+           )},
+          {Phoenix.PubSub, name: Studysync.PubSub},
+          # Start a worker by calling: Studysync.Worker.start_link(arg)
+          # {Studysync.Worker, arg},
+          # Start to serve requests, typically the last entry
+          StudysyncWeb.Endpoint,
+          {AshAuthentication.Supervisor, [otp_app: :studysync]}
+        ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

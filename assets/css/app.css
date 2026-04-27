@@ -1,94 +1,72 @@
-/* See the Tailwind configuration guide for advanced usage
-   https://tailwindcss.com/docs/configuration */
+/* StudySync — Direction 01: Margin Notes
+   Palette and typography follow CLAUDE.md §5. */
+
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap");
 
 @import "tailwindcss" source(none);
 @source "../../deps/ash_authentication_phoenix";
 @source "../css";
 @source "../js";
+@source "../svelte/**/*.svelte";
 @source "../../lib/studysync_web";
 
 /* A Tailwind plugin that makes "hero-#{ICON}" classes available.
    The heroicons installation itself is managed by your mix.exs */
 @plugin "../vendor/heroicons";
 
-/* daisyUI Tailwind Plugin. You can update this file by fetching the latest version with:
-   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui.js
-   Make sure to look at the daisyUI changelog: https://daisyui.com/docs/changelog/ */
-@plugin "../vendor/daisyui" {
+/* daisyUI Tailwind Plugin. */
+@plugin "daisyui/index.js" {
   themes: false;
 }
 
-/* daisyUI theme plugin. You can update this file by fetching the latest version with:
-  curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui-theme.js
-  We ship with two themes, a light one inspired on Phoenix colors and a dark one inspired
-  on Elixir colors. Build your own at: https://daisyui.com/theme-generator/ */
-@plugin "../vendor/daisyui-theme" {
-  name: "dark";
-  default: false;
-  prefersdark: true;
-  color-scheme: "dark";
-  --color-base-100: oklch(30.33% 0.016 252.42);
-  --color-base-200: oklch(25.26% 0.014 253.1);
-  --color-base-300: oklch(20.15% 0.012 254.09);
-  --color-base-content: oklch(97.807% 0.029 256.847);
-  --color-primary: oklch(58% 0.233 277.117);
-  --color-primary-content: oklch(96% 0.018 272.314);
-  --color-secondary: oklch(58% 0.233 277.117);
-  --color-secondary-content: oklch(96% 0.018 272.314);
-  --color-accent: oklch(60% 0.25 292.717);
-  --color-accent-content: oklch(96% 0.016 293.756);
-  --color-neutral: oklch(37% 0.044 257.287);
-  --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
-  --color-info-content: oklch(97% 0.013 236.62);
-  --color-success: oklch(60% 0.118 184.704);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
+/* Margin Notes design tokens — see CLAUDE.md §5.1, §5.2. */
+@theme {
+  --color-paper: #f4efe3;
+  --color-paper-2: #e8e0ce;
+  --color-terracotta: #b8512e;
+  --color-ink: #2a2521;
+  --color-ink-soft: #5c5750;
+
+  --font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-sans: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-@plugin "../vendor/daisyui-theme" {
-  name: "light";
+/* Single light theme — the warm paper-cream of Margin Notes.
+   Dark mode is intentionally not defined; CLAUDE.md §5.4 rejects it. */
+@plugin "daisyui/theme/index.js" {
+  name: "studysync";
   default: true;
   prefersdark: false;
   color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(96% 0.001 286.375);
-  --color-base-300: oklch(92% 0.004 286.32);
-  --color-base-content: oklch(21% 0.006 285.885);
-  --color-primary: oklch(70% 0.213 47.604);
-  --color-primary-content: oklch(98% 0.016 73.684);
-  --color-secondary: oklch(55% 0.027 264.364);
-  --color-secondary-content: oklch(98% 0.002 247.839);
-  --color-accent: oklch(0% 0 0);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(44% 0.017 285.786);
-  --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(62% 0.214 259.815);
-  --color-info-content: oklch(97% 0.014 254.604);
-  --color-success: oklch(70% 0.14 182.503);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
+  --color-base-100: oklch(94.5% 0.018 80);
+  --color-base-200: oklch(89% 0.028 84);
+  --color-base-300: oklch(83% 0.032 84);
+  --color-base-content: oklch(20% 0.008 60);
+  --color-primary: oklch(54% 0.143 38);
+  --color-primary-content: oklch(94.5% 0.018 80);
+  --color-secondary: oklch(40% 0.008 65);
+  --color-secondary-content: oklch(94.5% 0.018 80);
+  --color-accent: oklch(54% 0.143 38);
+  --color-accent-content: oklch(94.5% 0.018 80);
+  --color-neutral: oklch(20% 0.008 60);
+  --color-neutral-content: oklch(94.5% 0.018 80);
+  --color-info: oklch(54% 0.12 230);
+  --color-info-content: oklch(94.5% 0.018 80);
+  --color-success: oklch(56% 0.1 150);
+  --color-success-content: oklch(94.5% 0.018 80);
+  --color-warning: oklch(70% 0.15 75);
+  --color-warning-content: oklch(20% 0.008 60);
+  --color-error: oklch(54% 0.143 38);
+  --color-error-content: oklch(94.5% 0.018 80);
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.25rem;
   --size-selector: 0.21875rem;
   --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
+  --border: 1px;
+  --depth: 0;
   --noise: 0;
 }
 
@@ -97,10 +75,23 @@
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
 
-/* Use the data attribute for dark mode  */
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
-
 /* Make LiveView wrapper divs transparent for layout */
-[data-phx-session], [data-phx-teleported-src] { display: contents }
+[data-phx-session],
+[data-phx-teleported-src] {
+  display: contents;
+}
 
-/* This file is for your main application CSS */
+/* Tabular numerals utility — for any column of numbers (progress %, page numbers, time spent).
+   See CLAUDE.md §5.2. */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Default body uses the serif body face; mono is opt-in via font-mono. */
+html,
+body {
+  font-family: var(--font-serif);
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
+}

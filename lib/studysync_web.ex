@@ -83,6 +83,8 @@ defmodule StudysyncWeb do
       use Gettext, backend: StudysyncWeb.Gettext
 
       # HTML escaping functionality
+      import LiveSvelte
+
       import Phoenix.HTML
       # Core UI components
       import StudysyncWeb.CoreComponents

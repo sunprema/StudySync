@@ -7,12 +7,22 @@
 # General application configuration
 import Config
 
+config :live_svelte, ssr: true
+
+config :phoenix_vite, PhoenixVite.Npm,
+  assets: [args: [], cd: Path.expand("..", __DIR__)],
+  vite: [
+    args: ~w(exec -- vite),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"MIX_BUILD_PATH" => Mix.Project.build_path()}
+  ]
+
 config :ash_oban, pro?: false
 
 config :studysync, Oban,
   engine: Oban.Engines.Basic,
   notifier: Oban.Notifiers.Postgres,
-  queues: [default: 10],
+  queues: [default: 10, ai: 5],
   repo: Studysync.Repo,
   plugins: [{Oban.Plugins.Cron, []}]
 
@@ -61,7 +71,7 @@ config :spark,
 config :studysync,
   ecto_repos: [Studysync.Repo],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [Studysync.Accounts],
+  ash_domains: [Studysync.Accounts, Studysync.Workspaces],
   ash_authentication: [return_error_on_invalid_magic_link_token?: true]
 
 # Configure the endpoint
@@ -83,27 +93,6 @@ config :studysync, StudysyncWeb.Endpoint,
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
 config :studysync, Studysync.Mailer, adapter: Swoosh.Adapters.Local
-
-# Configure esbuild (the version is required)
-config :esbuild,
-  version: "0.25.4",
-  studysync: [
-    args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
-    cd: Path.expand("../assets", __DIR__),
-    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
-  ]
-
-# Configure tailwind (the version is required)
-config :tailwind,
-  version: "4.1.12",
-  studysync: [
-    args: ~w(
-      --input=assets/css/app.css
-      --output=priv/static/assets/css/app.css
-    ),
-    cd: Path.expand("..", __DIR__)
-  ]
 
 # Configure Elixir's Logger
 config :logger, :default_formatter,

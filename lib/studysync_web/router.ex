@@ -24,18 +24,13 @@ defmodule StudysyncWeb.Router do
 
   scope "/", StudysyncWeb do
     pipe_through :browser
+    live "/svelte_demo", SvelteDemoLive
 
-    ash_authentication_live_session :authenticated_routes do
-      # in each liveview, add one of the following at the top of the module:
-      #
-      # If an authenticated user must be present:
-      # on_mount {StudysyncWeb.LiveUserAuth, :live_user_required}
-      #
-      # If an authenticated user *may* be present:
-      # on_mount {StudysyncWeb.LiveUserAuth, :live_user_optional}
-      #
-      # If an authenticated user must *not* be present:
-      # on_mount {StudysyncWeb.LiveUserAuth, :live_no_user}
+    ash_authentication_live_session :authenticated_routes,
+      on_mount: {StudysyncWeb.LiveUserAuth, :live_user_required} do
+      live "/workspaces", WorkspaceLive.Index, :index
+      live "/workspaces/new", WorkspaceLive.New, :new
+      live "/workspaces/:id", WorkspaceLive.Show, :show
     end
   end
 
