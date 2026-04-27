@@ -28,11 +28,25 @@ import topbar from "topbar"
 import {getHooks} from "live_svelte"
 import Components from "virtual:live-svelte-components"
 
+// MarginColumn — listens for `scroll_to_margin_note` events from the LiveView
+// (pushed when a marker is clicked in the PDF canvas) and smooth-scrolls the
+// matching margin note into view. Pairs with PdfCanvasRenderer's reverse
+// effect (active_annotation_id → page scroll) to give the bi-directional sync
+// a low-latency feel without round-tripping for hover.
+const MarginColumn = {
+  mounted() {
+    this.handleEvent("scroll_to_margin_note", ({id}) => {
+      const el = this.el.querySelector(`#margin-note-${id}`)
+      if (el) el.scrollIntoView({behavior: "smooth", block: "center"})
+    })
+  },
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ...getHooks(Components)},
+  hooks: {...colocatedHooks, ...getHooks(Components), MarginColumn},
 })
 
 // Show progress bar on live navigation and form submits

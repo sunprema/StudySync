@@ -81,6 +81,15 @@
   display: contents;
 }
 
+/* LiveSvelte wraps each component in two nested divs (phx-hook="SvelteHook"
+   and data-svelte-target). Neither carries a height, so flex-1 sizing chains
+   collapse to zero. Make both transparent to layout so the Svelte root
+   (e.g. PdfCanvasRenderer's .reader) sizes against the real parent. */
+[phx-hook="SvelteHook"],
+[data-svelte-target] {
+  display: contents;
+}
+
 /* Tabular numerals utility — for any column of numbers (progress %, page numbers, time spent).
    See CLAUDE.md §5.2. */
 .num {

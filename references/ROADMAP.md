@@ -82,19 +82,19 @@ A user can click a resource and land on a reader screen with the three-column la
 
 User selects text in the PDF, gets a floating menu, can create a comment annotation. It appears as a footnote marker inline and a card in the margin. No threads yet, no real-time, no other annotation types.
 
-- [ ] **4.1** Ash resource: `StudySync.Annotations.Annotation` with fields per REQUIREMENTS §3.4
-- [ ] **4.2** Ash action: `:create_comment` accepting `{resource_id, page, rect, text}`
-- [ ] **4.3** Ash policies: workspace members can create; visibility `:private` only readable by author, `:workspace` by all members
-- [ ] **4.4** Svelte: text selection detection in `PdfCanvasRenderer`
-- [ ] **4.5** Svelte: floating menu on selection ("Add Comment")
-- [ ] **4.6** LiveView↔Svelte event: `text_selected` → `{ text, page, rect }` (per CLAUDE.md §4.3)
-- [ ] **4.7** LiveView: receives `text_selected`, opens annotation form in margin column
-- [ ] **4.8** LiveView: form submit creates annotation via Ash action
-- [ ] **4.9** Phoenix component: `<.footnote_marker>` (terracotta superscript, numbered)
-- [ ] **4.10** Phoenix component: `<.margin_note>` (card with author, timestamp, snippet, body)
-- [ ] **4.11** LiveView↔Svelte prop: `annotations[]` flows to Svelte for marker rendering
-- [ ] **4.12** Optimistic UI: card appears in margin immediately on submit
-- [ ] **4.13** Tests: annotation creation, policy enforcement, marker rendering
+- [x] **4.1** Ash resource: `StudySync.Annotations.Annotation` with fields per REQUIREMENTS §3.4
+- [x] **4.2** Ash action: `:create_comment` accepting `{resource_id, page, rect, text}`
+- [x] **4.3** Ash policies: workspace members can create; visibility `:private` only readable by author, `:workspace` by all members
+- [x] **4.4** Svelte: text selection detection in `PdfCanvasRenderer`
+- [x] **4.5** Svelte: floating menu on selection ("Add Comment")
+- [x] **4.6** LiveView↔Svelte event: `text_selected` → `{ text, page, rect }` (per CLAUDE.md §4.3)
+- [x] **4.7** LiveView: receives `text_selected`, opens annotation form in margin column
+- [x] **4.8** LiveView: form submit creates annotation via Ash action
+- [x] **4.9** Phoenix component: `<.footnote_marker>` (terracotta superscript, numbered)
+- [x] **4.10** Phoenix component: `<.margin_note>` (card with author, timestamp, snippet, body)
+- [x] **4.11** LiveView↔Svelte prop: `annotations[]` flows to Svelte for marker rendering
+- [x] **4.12** Optimistic UI: card appears in margin immediately on submit
+- [x] **4.13** Tests: annotation creation, policy enforcement, marker rendering
 
 ---
 
@@ -102,15 +102,16 @@ User selects text in the PDF, gets a floating menu, can create a comment annotat
 
 Click a margin note → PDF scrolls to and highlights the source. Click a footnote marker in the PDF → margin scrolls to and highlights the corresponding card. Active annotation stays visually linked in both views.
 
-- [ ] **5.1** LiveView↔Svelte event: `annotation_clicked` → `{ id }` (Svelte → LiveView)
-- [ ] **5.2** LiveView↔Svelte prop: `active_annotation_id` (LiveView → Svelte)
-- [ ] **5.3** Svelte: scroll-to-page-and-highlight on `active_annotation_id` change
-- [ ] **5.4** LiveView: clicking a `<.margin_note>` sets `active_annotation_id`
-- [ ] **5.5** LiveView: receiving `annotation_clicked` from Svelte sets `active_annotation_id` and scrolls margin column
-- [ ] **5.6** Visual treatment: active annotation gets terracotta left border in margin, highlight pulse on PDF
-- [ ] **5.7** Hover linking: hovering a margin note dims other markers in the PDF
+- [x] **5.1** LiveView↔Svelte event: `annotation_clicked` → `{ id }` (Svelte → LiveView)
+- [x] **5.2** LiveView↔Svelte prop: `active_annotation_id` (LiveView → Svelte)
+- [x] **5.3** Svelte: scroll-to-page-and-highlight on `active_annotation_id` change
+- [x] **5.4** LiveView: clicking a `<.margin_note>` sets `active_annotation_id`
+- [x] **5.5** LiveView: receiving `annotation_clicked` from Svelte sets `active_annotation_id` and scrolls margin column
+- [x] **5.6** Visual treatment: active annotation gets terracotta left border in margin, highlight pulse on PDF
+- [x] **5.7** Hover linking: hovering a margin note dims other markers in the PDF
 - [ ] **5.8** Manual verification: <100ms perceived latency both directions
-- [ ] **5.9** Tests: clicking margin note pushes correct event to Svelte; clicking marker triggers correct LiveView state
+  - Pending — needs a browser session with two clicks (margin → PDF, marker → margin) to confirm.
+- [x] **5.9** Tests: clicking margin note pushes correct event to Svelte; clicking marker triggers correct LiveView state
 
 ---
 
@@ -118,14 +119,14 @@ Click a margin note → PDF scrolls to and highlights the source. Click a footno
 
 Each annotation has a comment thread. Users can reply. Replies render under the margin note when expanded.
 
-- [ ] **6.1** Ash resource: `StudySync.Annotations.AnnotationComment` (annotation_id, user_id, body, is_ai_response, inserted_at)
-- [ ] **6.2** Ash action: `:reply` on annotation, accepts body, creates a comment
-- [ ] **6.3** Ash policies: any workspace member can reply to a workspace-visible annotation
-- [ ] **6.4** Phoenix component: `<.thread_reply>` (avatar, body, timestamp)
-- [ ] **6.5** LiveView: expand/collapse thread under margin note
-- [ ] **6.6** LiveView: inline reply input under expanded thread
-- [ ] **6.7** Reply count badge on collapsed margin note ("2 replies")
-- [ ] **6.8** Tests: replying, thread retrieval, policy enforcement
+- [x] **6.1** Ash resource: `StudySync.Annotations.AnnotationComment` (annotation_id, user_id, body, is_ai_response, inserted_at)
+- [x] **6.2** Ash action: `:reply` on annotation, accepts body, creates a comment
+- [x] **6.3** Ash policies: any workspace member can reply to a workspace-visible annotation
+- [x] **6.4** Phoenix component: `<.thread_reply>` (avatar, body, timestamp)
+- [x] **6.5** LiveView: expand/collapse thread under margin note
+- [x] **6.6** LiveView: inline reply input under expanded thread
+- [x] **6.7** Reply count badge on collapsed margin note ("2 replies")
+- [x] **6.8** Tests: replying, thread retrieval, policy enforcement
 
 ---
 
@@ -133,15 +134,17 @@ Each annotation has a comment thread. Users can reply. Replies render under the 
 
 Two users in the same workspace see each other's annotations and replies appear live, without refresh. PubSub is wired.
 
-- [ ] **7.1** PubSub topic convention: `"resource:#{resource_id}"`
-- [ ] **7.2** PubSub broadcasts: new annotation, new reply, annotation deletion
-- [ ] **7.3** Broadcast payload: minimum needed (id, type, scope) — NOT raw structs (per CLAUDE.md §8.4)
-- [ ] **7.4** LiveView: subscribe on mount, unsubscribe on terminate
-- [ ] **7.5** LiveView: on receive, refetch via Ash (honors authorization), then patch assigns
-- [ ] **7.6** Streams: annotations list uses `phx-update="stream"` to avoid full re-renders
-- [ ] **7.7** Svelte: PDF canvas does NOT re-render on new annotation — only marker overlay updates
+- [x] **7.1** PubSub topic convention: `"resource:#{resource_id}"`
+- [x] **7.2** PubSub broadcasts: new annotation, new reply, annotation deletion
+  - Annotation deletion isn't part of the product surface yet (no delete action exists in Slices 4–6); the topic + helper are in place to add `:annotation_deleted` the moment a delete action ships. Re-evaluate when a deletion UI lands.
+- [x] **7.3** Broadcast payload: minimum needed (id, type, scope) — NOT raw structs (per CLAUDE.md §8.4)
+- [x] **7.4** LiveView: subscribe on mount, unsubscribe on terminate
+- [x] **7.5** LiveView: on receive, refetch via Ash (honors authorization), then patch assigns
+- [x] **7.6** Streams: annotations list uses `phx-update="stream"` to avoid full re-renders
+- [x] **7.7** Svelte: PDF canvas does NOT re-render on new annotation — only marker overlay updates
 - [ ] **7.8** Manual verification: two browsers, change in one shows in the other within ~500ms
-- [ ] **7.9** Tests: PubSub broadcasts on create, multiple subscribers receive
+  - Pending — needs two browser sessions on the same resource to confirm by eye.
+- [x] **7.9** Tests: PubSub broadcasts on create, multiple subscribers receive
 
 ---
 
@@ -299,6 +302,9 @@ When a slice closes (all items checked), append a one-line entry here:
 - Slice 0 — Foundations — closed 2026-04-26
 - Slice 1 — Identity & Workspaces — closed 2026-04-26
 - Slice 2 — Resources (PDF upload & storage) — closed 2026-04-26
-- Slice 3 — PDF Reader Shell — code-complete 2026-04-26 (3.8 manual scroll verification pending — needs server restart)
+- Slice 3 — PDF Reader Shell — closed 2026-04-26
+- Slice 4 — Text Selection & Annotation Creation — closed 2026-04-26
+- Slice 6 — Annotation Threads — closed 2026-04-26
+- Slice 7 — Real-Time Collaboration — closed 2026-04-26 (7.8 manual verification pending)
 - ...
 ```

@@ -71,7 +71,12 @@ config :spark,
 config :studysync,
   ecto_repos: [Studysync.Repo],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [Studysync.Accounts, Studysync.Workspaces, Studysync.Library],
+  ash_domains: [
+    Studysync.Accounts,
+    Studysync.Workspaces,
+    Studysync.Library,
+    Studysync.Annotations
+  ],
   storage_adapter: Studysync.Library.Storage.Local,
   storage_path: "priv/uploads",
   ash_authentication: [return_error_on_invalid_magic_link_token?: true]
