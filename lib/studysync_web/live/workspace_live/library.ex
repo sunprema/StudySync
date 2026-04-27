@@ -7,6 +7,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
   alias Studysync.Activity.PubSub, as: ActivityPubSub
   alias Studysync.Annotations.Annotation
   alias Studysync.Library
+  alias Studysync.Progress.MilestoneMarker
   alias Studysync.Workspaces
   alias Studysync.Workspaces.Membership
 
@@ -27,6 +28,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
 
         members = active_members(workspace.id)
         progress_matrix = member_progress_matrix(resources, members)
+        milestones_by_resource = milestones_by_resource(resources)
 
         events = Activity.list_for_workspace(workspace.id, actor: actor, limit: @activity_limit)
 
@@ -40,6 +42,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
           |> assign(:upload_error, nil)
           |> assign(:members, members)
           |> assign(:progress_matrix, progress_matrix)
+          |> assign(:milestones_by_resource, milestones_by_resource)
           |> assign(:activity_event_ids, MapSet.new(Enum.map(events, & &1.id)))
           |> stream(:resources, resources)
           |> stream(:activity_events, events, dom_id: &"activity-#{&1.id}")
@@ -183,7 +186,10 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
                     </.link>
                     <p class="font-mono text-xs uppercase tracking-widest text-ink-soft mt-2">
                       <span class="num">{resource.page_count}</span>
-                      pages · {format_date(resource.inserted_at)}<span :if={uploader_email(resource)}>
+                      pages · <span class="num">{length(@members)}</span>
+                      {if length(@members) == 1, do: "reader", else: "readers"} · started {format_date(
+                        resource.inserted_at
+                      )}<span :if={uploader_email(resource)}>
                         · {uploader_email(resource)}</span>
                     </p>
                   </div>
@@ -195,14 +201,14 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
                   </p>
                 </header>
 
-                <div class="px-6 pt-2 pb-7 bg-paper-2/40 rounded">
-                  <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-                    Group · <span class="num">{length(@members)}</span>
-                    {if length(@members) == 1, do: "reader", else: "readers"}
-                  </p>
+                <div class="px-6 pt-5 pb-7 bg-paper-2/40 rounded">
                   <.progress_timeline
                     members={members_for(@progress_matrix, resource.id)}
                     current_user_id={@current_user.id}
+                    milestones={milestones_for(@milestones_by_resource, resource.id)}
+                    total_pages={resource.page_count}
+                    avg_progress_percent={resource.avg_progress_percent || 0}
+                    total_time_spent_seconds={total_time_spent(@progress_matrix, resource.id)}
                   />
                 </div>
 
@@ -294,11 +300,15 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
             empty_row = empty_matrix_row(socket.assigns.members)
             matrix = Map.put(socket.assigns.progress_matrix, resource.id, empty_row)
 
+            milestones =
+              Map.put(socket.assigns.milestones_by_resource, resource.id, [])
+
             {:noreply,
              socket
              |> assign(:title, "")
              |> assign(:upload_error, nil)
              |> assign(:progress_matrix, matrix)
+             |> assign(:milestones_by_resource, milestones)
              |> stream_insert(:resources, resource, at: 0)
              |> put_flash(:info, "PDF uploaded.")}
 
@@ -468,6 +478,33 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
 
   defp members_for(matrix, resource_id) do
     Map.get(matrix, resource_id, [])
+  end
+
+  # Single milestone fetch grouped by resource_id. Read with `authorize?:
+  # false` for the same reason the membership roster is — page-level
+  # workspace membership has already been authorised, and milestones are
+  # workspace-public guideposts (see MilestoneMarker policy).
+  defp milestones_by_resource([]), do: %{}
+
+  defp milestones_by_resource(resources) do
+    resource_ids = Enum.map(resources, & &1.id)
+
+    MilestoneMarker
+    |> Ash.Query.filter(resource_id in ^resource_ids)
+    |> Ash.Query.sort(page_number: :asc)
+    |> Ash.read!(authorize?: false)
+    |> Enum.group_by(& &1.resource_id)
+  end
+
+  defp milestones_for(by_resource, resource_id) do
+    Map.get(by_resource, resource_id, [])
+  end
+
+  defp total_time_spent(matrix, resource_id) do
+    matrix
+    |> Map.get(resource_id, [])
+    |> Enum.map(&(Map.get(&1, :time_spent_seconds) || 0))
+    |> Enum.sum()
   end
 
   defp error_to_string(:too_large), do: "File is too large."

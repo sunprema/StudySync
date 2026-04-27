@@ -387,13 +387,21 @@ defmodule StudysyncWeb.LibraryComponents do
   defp relative_time(_, _), do: ""
 
   @doc """
-  Horizontal progress timeline with avatar pins (Slice 9).
+  Horizontal group-progress timeline (Slice 9, expanded for the design-page-3
+  match).
 
-  A flat paper-2 track spans the full width. Each member is rendered as an
-  initials circle pinned to their `progress_percent` along the track. The
-  current actor's pin is bumped in size and gets a terracotta ring so a
-  reader can find themselves at a glance. Multiple members at the same
-  progress fan apart vertically rather than overlapping.
+  Three stacked bands inside one block:
+
+  1. Header — left: "Group is on Chapter N" in serif; right: "% AVG · Hh Mm
+     TOGETHER" in mono caps. The chapter count comes from the milestones
+     placed on the resource (admin-only via Slice 12); we treat each
+     milestone as the boundary between chapters.
+  2. Track — paper-2 hairline with a tinted "covered" segment up to
+     `avg_progress_percent`, short tick marks at each milestone position,
+     a terracotta vertical bar at the group average, and avatar dots pinned
+     at each member's own position.
+  3. Foot — five evenly-spaced PART labels (PART I … PART V) in mono caps,
+     synthesised as fifths of the book until a real outline lands.
 
   `members` is a list of maps:
 
@@ -402,20 +410,68 @@ defmodule StudysyncWeb.LibraryComponents do
         email: "...",          # used to compute initials + label
         progress_percent: 0..100
       }
+
+  `milestones` is a list of `Studysync.Progress.MilestoneMarker` structs
+  (only `:page_number` is read here).
   """
   attr :members, :list, required: true
   attr :current_user_id, :any, default: nil
+  attr :milestones, :list, default: []
+  attr :total_pages, :integer, default: 0
+  attr :avg_progress_percent, :integer, default: 0
+  attr :total_time_spent_seconds, :integer, default: 0
   attr :class, :string, default: nil
 
   def progress_timeline(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :chapter_label,
+        chapter_label(assigns.milestones, assigns.avg_progress_percent, assigns.total_pages)
+      )
+
     ~H"""
     <div class={["w-full", @class]}>
+      <header class="flex items-baseline justify-between gap-4 mb-3">
+        <p class="font-serif text-base text-ink">
+          {@chapter_label}
+        </p>
+        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+          <span class="num">{@avg_progress_percent}</span>% AVG
+          <span class="text-ink-soft/50 mx-1">·</span>
+          <span class="num">{format_total_duration(@total_time_spent_seconds)}</span>
+          TOGETHER
+        </p>
+      </header>
+
       <div class="relative h-12 mt-2">
         <div class="absolute left-0 right-0 top-1/2 h-px bg-paper-2 -translate-y-1/2"></div>
+
+        <div
+          class="absolute left-0 top-1/2 h-px bg-terracotta/30 -translate-y-1/2"
+          style={"width: #{clamp_pct(@avg_progress_percent)}%;"}
+        >
+        </div>
+
+        <div
+          :for={{ms, idx} <- Enum.with_index(@milestones)}
+          class="absolute top-1/2 w-px h-2 bg-ink-soft/40 -translate-y-1/2"
+          style={"left: #{milestone_pct(ms, @total_pages)}%;"}
+          title={"Chapter #{idx + 1} · p. #{ms.page_number}"}
+        >
+        </div>
+
+        <div
+          :if={@avg_progress_percent > 0}
+          class="absolute top-1/2 w-px h-4 bg-terracotta -translate-y-1/2"
+          style={"left: #{clamp_pct(@avg_progress_percent)}%;"}
+        >
+        </div>
+
         <div
           :for={{member, idx} <- Enum.with_index(@members)}
-          class="absolute top-1/2 -translate-y-1/2"
-          style={"left: #{member.progress_percent}%; transform: translate(-50%, calc(-50% + #{pin_offset(idx)}px));"}
+          class="absolute top-1/2"
+          style={"left: #{clamp_pct(member.progress_percent)}%; transform: translate(-50%, calc(-50% + #{pin_offset(idx)}px));"}
           title={"#{member.email} · #{member.progress_percent}%"}
         >
           <div class={[
@@ -423,26 +479,66 @@ defmodule StudysyncWeb.LibraryComponents do
             "font-mono uppercase tracking-widest",
             if(@current_user_id && member.user_id == @current_user_id,
               do: "w-8 h-8 text-[10px] bg-terracotta text-paper ring-2 ring-terracotta/30",
-              else: "w-7 h-7 text-[9px] bg-paper-2 text-ink-soft border border-paper-2"
+              else: "w-7 h-7 text-[9px] bg-paper text-ink-soft border border-paper-2"
             )
           ]}>
             {member_initials(member.email)}
           </div>
         </div>
+      </div>
 
-        <span class="absolute left-0 -bottom-5 font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-          P. <span class="num">1</span>
-        </span>
-        <span class="absolute right-0 -bottom-5 font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-          End
+      <div class="relative mt-2 h-4">
+        <span
+          :for={{label, pct} <- part_labels()}
+          class="absolute font-mono text-[10px] uppercase tracking-widest text-ink-soft"
+          style={"left: #{pct}%;"}
+        >
+          PART {label}
         </span>
       </div>
     </div>
     """
   end
 
-  defp pin_offset(idx) when rem(idx, 2) == 0, do: -8
-  defp pin_offset(_), do: 8
+  defp pin_offset(idx) when rem(idx, 2) == 0, do: -10
+  defp pin_offset(_), do: 10
+
+  defp clamp_pct(pct) when is_number(pct) do
+    pct |> max(0) |> min(100)
+  end
+
+  defp clamp_pct(_), do: 0
+
+  defp milestone_pct(%{page_number: page}, total) when is_integer(page) and total > 0 do
+    clamp_pct(page * 100 / total)
+  end
+
+  defp milestone_pct(_, _), do: 0
+
+  defp part_labels do
+    [{"I", 0}, {"II", 20}, {"III", 40}, {"IV", 60}, {"V", 80}]
+  end
+
+  defp chapter_label([], _avg_pct, _total_pages), do: "Group is reading"
+
+  defp chapter_label(_milestones, _avg_pct, total) when not is_integer(total) or total <= 0,
+    do: "Group is reading"
+
+  defp chapter_label(milestones, avg_pct, total_pages) do
+    avg_page = avg_pct * total_pages / 100
+    passed = Enum.count(milestones, &(&1.page_number <= avg_page))
+    "Group is on Chapter #{passed + 1}"
+  end
+
+  defp format_total_duration(seconds) when is_integer(seconds) and seconds > 0 do
+    cond do
+      seconds < 3600 -> "#{div(seconds, 60)}m"
+      seconds < 86_400 -> "#{div(seconds, 3600)}h #{rem(div(seconds, 60), 60)}m"
+      true -> "#{div(seconds, 86_400)}d #{rem(div(seconds, 3600), 24)}h"
+    end
+  end
+
+  defp format_total_duration(_), do: "0m"
 
   defp member_initials(nil), do: "·"
 
