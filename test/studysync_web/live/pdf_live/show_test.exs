@@ -972,43 +972,45 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       refute html =~ "Place milestone"
     end
 
-    test "toggling milestone mode flips the prop and surfaces the placement hint", %{
+    test "toggling milestone mode flips the toggle button label", %{
       conn: conn,
       user: user,
       workspace: ws,
       resource: r
     } do
-      {:ok, view, _html} =
+      {:ok, view, html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      assert html =~ "Place milestone"
+      refute html =~ "Cancel placement"
 
       flipped =
         view
         |> element(~s(button[phx-click="toggle_milestone_mode"]))
         |> render_click()
 
-      assert flipped =~ "Click anywhere on a page to drop a milestone."
+      # Slice 12 (revised): the placement hint banner is gone — the
+      # floating form on the page surface tells the admin what to do.
+      # The toggle button itself flips to "Cancel placement".
       assert flipped =~ "Cancel placement"
+      refute flipped =~ "Click anywhere on a page to drop a milestone."
     end
 
-    test "milestone_placed event opens a label form, save_milestone persists and renders the marker",
+    test "milestone_placed with a label persists and renders the marker in one shot",
          %{conn: conn, user: user, workspace: ws, resource: r} do
       {:ok, view, _html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
 
       view |> element(~s(button[phx-click="toggle_milestone_mode"])) |> render_click()
 
-      open_html =
-        render_hook(view, "milestone_placed", %{
-          "page" => 2,
-          "position" => %{"x" => 0.4, "y" => 0.3}
-        })
-
-      assert open_html =~ "New milestone · page"
-      assert has_element?(view, "#milestone-form")
-
-      view
-      |> form("#milestone-form", form: %{label: "End of Chapter 2"})
-      |> render_submit()
+      # The Svelte canvas now collects the label in a floating form on
+      # click and ships `{ page, position, label }` together. No
+      # intermediate margin form, no save_milestone round-trip.
+      render_hook(view, "milestone_placed", %{
+        "page" => 2,
+        "position" => %{"x" => 0.4, "y" => 0.3},
+        "label" => "End of Chapter 2"
+      })
 
       [persisted] =
         Progress.list_milestones!(
@@ -1025,8 +1027,31 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       # Margin column shows the milestone in the panel
       assert after_save =~ "End of Chapter 2"
       assert after_save =~ ~s(id="milestone-#{persisted.id}")
-      # Form is closed
-      refute has_element?(view, "#milestone-form")
+      # Mode auto-exits after a successful placement
+      refute after_save =~ "Cancel placement"
+    end
+
+    test "milestone_placed with an empty label is a no-op", %{
+      conn: conn,
+      user: user,
+      workspace: ws,
+      resource: r
+    } do
+      {:ok, view, _html} =
+        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      view |> element(~s(button[phx-click="toggle_milestone_mode"])) |> render_click()
+
+      render_hook(view, "milestone_placed", %{
+        "page" => 1,
+        "position" => %{"x" => 0.5, "y" => 0.5},
+        "label" => "   "
+      })
+
+      assert Progress.list_milestones!(
+               actor: user,
+               query: [filter: [resource_id: r.id]]
+             ) == []
     end
 
     test "milestone_placed from a non-admin is a no-op", %{
@@ -1050,10 +1075,9 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
 
       render_hook(view, "milestone_placed", %{
         "page" => 1,
-        "position" => %{"x" => 0.5, "y" => 0.5}
+        "position" => %{"x" => 0.5, "y" => 0.5},
+        "label" => "Sneaky"
       })
-
-      refute has_element?(view, "#milestone-form")
 
       assert Progress.list_milestones!(
                actor: owner,
@@ -1431,6 +1455,107 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       after
         :telemetry.detach(handler_id)
       end
+    end
+  end
+
+  describe "Slice 18 — transient chat panel" do
+    test "mount shows the collapsed pill and seeds recent buffer messages on expand",
+         %{conn: conn, user: user, workspace: ws, resource: r} do
+      # Pre-seed the buffer directly so we don't have to round-trip through
+      # the panel's optimistic insert. `to_string/1` strips Ash.CiString.
+      {:ok, _} =
+        Studysync.Chat.Buffer.append(r.id, user.id, to_string(user.email), "earlier message")
+
+      {:ok, view, html} =
+        conn
+        |> sign_in(user)
+        |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      # Collapsed by default — the pill is visible (aria-hidden="false")
+      # and the panel section is hidden (aria-hidden="true"). The panel
+      # stays in the DOM so streams keep their items across toggles, but
+      # is visually hidden via the `hidden` Tailwind class.
+      assert html =~ ~s(aria-label="Open chat)
+      assert html =~ ~s(aria-label="Study-room chat" aria-hidden="true")
+      # Seeded message is in the DOM but inside the hidden section.
+      assert html =~ "earlier message"
+
+      # Expand — the panel becomes visible and shows the seeded message.
+      after_open =
+        view
+        |> element(~s|button[aria-label^="Open chat"]|)
+        |> render_click()
+
+      assert after_open =~ ~s(aria-label="Study-room chat" aria-hidden="false")
+      assert after_open =~ "earlier message"
+      assert after_open =~ "here now"
+    end
+
+    test "sending a message via the form inserts it into the panel locally",
+         %{conn: conn, user: user, workspace: ws, resource: r} do
+      {:ok, view, _html} =
+        conn
+        |> sign_in(user)
+        |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      view |> element(~s|button[aria-label^="Open chat"]|) |> render_click()
+
+      after_send =
+        view
+        |> form("#chat-panel form", message: %{body: "hello room"})
+        |> render_submit()
+
+      assert after_send =~ "hello room"
+
+      # The message is also in the buffer.
+      assert [%Studysync.Chat.Message{body: "hello room"}] = Studysync.Chat.recent(r.id)
+    end
+
+    test "an empty message surfaces a validation error and doesn't insert",
+         %{conn: conn, user: user, workspace: ws, resource: r} do
+      {:ok, view, _html} =
+        conn
+        |> sign_in(user)
+        |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      view |> element(~s|button[aria-label^="Open chat"]|) |> render_click()
+
+      after_send =
+        view
+        |> form("#chat-panel form", message: %{body: "   "})
+        |> render_submit()
+
+      assert after_send =~ "can&#39;t be blank"
+      assert Studysync.Chat.recent(r.id) == []
+    end
+
+    test "a peer's broadcast lands in the panel via send_update",
+         %{conn: conn, user: user, workspace: ws, resource: r} do
+      member = register_user("chat-peer@example.com")
+      _ = Workspaces.invite_member!(ws.id, "chat-peer@example.com", actor: user)
+
+      [pending] =
+        Studysync.Workspaces.Membership
+        |> Ash.Query.filter(user_id == ^member.id)
+        |> Ash.read!(authorize?: false)
+
+      {:ok, _} = Workspaces.accept_invite(pending, actor: member)
+
+      {:ok, view, _html} =
+        conn
+        |> sign_in(user)
+        |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
+
+      view |> element(~s|button[aria-label^="Open chat"]|) |> render_click()
+
+      # Peer sends a message — broadcast lands in the LV's mailbox and is
+      # forwarded to the component via send_update. The peer is on a
+      # different (test) process, so broadcast_from! delivers to the LV.
+      {:ok, %Studysync.Chat.Message{}} =
+        Studysync.Chat.send_message(member, r.id, "ping from a peer")
+
+      html = render(view)
+      assert html =~ "ping from a peer"
     end
   end
 end

@@ -52,6 +52,7 @@ The core loop is: **Read → Highlight → Annotate → Discuss → AI → Save 
 - Authorization is expressed as Ash policies, not scattered through controllers/LiveViews.
 - Use `AshPostgres` for persistence. Use Ash calculations/aggregates for derived data (e.g. "completion %", "stamp count per milestone").
 - Use `AshDoubleEntry` only if/when we add anything ledger-shaped — not relevant for MVP.
+- **Carve-out: `Studysync.Chat`** (Slice 18) is intentionally not an Ash resource because it has no persistence — chat messages live in an ETS ring buffer for the lifetime of the BEAM node and are gone after a restart. Authorization is enforced in plain Elixir via `Workspaces.actor_member?/2`. Any other "no DB, just memory" side-channel can follow the same pattern; everything else still goes through Ash.
 
 ### 4.2 LiveView owns the page, Svelte owns the canvas
 
@@ -79,7 +80,7 @@ This is the only API surface between the two worlds. Keep it small and stable.
 
 - `text_selected` → `{ text, page, rect, type }` — `type` ∈ `"comment" | "question" | "puzzle"` (added Slice 10)
 - `annotation_clicked` → `{ id }`
-- `milestone_placed` → `{ page, position: { x, y } }` — fired in `milestone_mode` when an admin clicks a page (added Slice 12)
+- `milestone_placed` → `{ page, position: { x, y }, label }` — fired in `milestone_mode` when an admin submits the floating placement form on a page. The canvas now collects the label inline at the click point (mirroring the "Add comment" floating menu) and ships it alongside the position; the LV creates the milestone in one shot, no margin-column form. (added Slice 12; payload extended to include `label` when the placement UI moved into the canvas — see CLAUDE.md update for details)
 - `apply_stamp` → `{ milestone_id }` — fired when the user confirms a stamp from the per-milestone popover. The LiveView authorises through Ash, applies the stamp, and broadcasts (`:stamp_applied`) so all open readers re-fetch and patch. (added Slice 13)
 - `pages_visible` → `{ first, last, primary }` — debounced (~120ms) report of the page range currently intersecting the viewport. `first`/`last` come from the canvas's IntersectionObserver (with its 1000px rootMargin) and define the virtualization range. `primary` is the page with the largest *true* viewport overlap — the LiveView uses it as the focal page so the margin column's focal-page highlight and the "Page" scope tab match what the reader is actually looking at, not whatever sliver of an adjacent page sits within the rootMargin buffer. (added Slice 15; lazy-hydration role removed in Slice 15a — the reader now eagerly loads the whole book at mount. `primary` added when the margin scope tabs landed.)
 - `outline_loaded` → `{ chapters: [{ label, page }] }` — fired once after PDF.js loads the document, with the top-level outline entries flattened to `{ label, page }` pairs (page is 1-indexed). Empty list when the PDF has no outline. The LiveView stores it as `@chapters` and feeds the chapter rail. Top-level only — nested outline items are ignored to keep the rail visually quiet. (added Slice 17)
@@ -228,7 +229,7 @@ Also out of scope until explicitly requested: flashcard generation, public marke
 ### 8.4 Common traps
 
 - **Don't put domain logic in LiveViews.** LiveViews orchestrate; Ash actions decide.
-- **Don't broadcast raw resource structs over PubSub.** Broadcast the minimum needed (id, type, scope) and let subscribers refetch via Ash if they need the full thing — keeps authorization honest.
+- **Don't broadcast raw resource structs over PubSub.** Broadcast the minimum needed (id, type, scope) and let subscribers refetch via Ash if they need the full thing — keeps authorization honest. *Carve-out:* `Studysync.Chat.PubSub` (Slice 18) broadcasts the full `%Chat.Message{}` because chat is non-persistent — there's nothing to refetch from. This is the only place the rule is relaxed.
 - **Don't expand the LiveView↔Svelte contract on a whim.** Updating §4.3 is part of the change.
 - **Don't introduce a second Svelte component to "make life easier".** The cost of crossing that boundary repeatedly is higher than the cost of doing it well in LiveView once.
 - **Don't reach past Ash to the Repo.** If Ash can't express it, that's a conversation, not a workaround.

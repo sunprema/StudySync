@@ -89,6 +89,13 @@
   // Milestone popover — { x, y, milestone_id } or null. Anchored next to the
   // marker the user clicked; shows X/N readers + avatar cluster + stamp button.
   let milestonePopover = $state(null);
+  // Floating milestone-placement form (Slice 12, revised). Mirrors the
+  // selectionMenu pattern: anchored to a click point on the page surface,
+  // collects the label inline, then ships `milestone_placed` with the
+  // label so the LV creates the milestone in one shot.
+  //   { x, y, page, position: { x, y }, label }
+  let milestonePlacement = $state(null);
+  let milestoneInputEl = $state(null);
   // Hover-linking state — set by document-level "studysync:annotation-hover"
   // events dispatched from the margin column. Pure client-side; no LV roundtrip.
   let hoveredAnnotationId = $state(null);
@@ -624,12 +631,13 @@
     );
   }
 
-  // Admin-only milestone placement (Slice 12). When `milestone_mode` is true
-  // a transparent <button> overlays each page; clicking it normalises the
-  // click point against the page rect (the button's parent) and ships
-  // `{ page, position }` to LiveView for the label form. The overlay also
-  // prevents text selection while placing so the floating "Add comment" menu
-  // never competes with placement clicks.
+  // Admin-only milestone placement (Slice 12, revised). When
+  // `milestone_mode` is true a transparent <button> overlays each page;
+  // clicking it normalises the click point against the page rect, then
+  // *opens an inline floating label form* anchored at the click — same
+  // pattern as the "Add comment" selection menu. Submitting the form
+  // ships `{ page, position, label }` in one shot and the LV creates the
+  // milestone immediately. No margin-column form, no two-step.
   function onPageClick(e, pageNum) {
     if (!milestone_mode) return;
 
@@ -641,14 +649,68 @@
     e.preventDefault();
     e.stopPropagation();
 
-    pushEvent("milestone_placed", {
+    milestonePlacement = {
+      // Viewport-fixed coords so the form stays anchored as the page scrolls.
+      x: e.clientX,
+      y: e.clientY,
       page: pageNum,
       position: {
         x: (e.clientX - rect.left) / rect.width,
         y: (e.clientY - rect.top) / rect.height,
       },
-    });
+      label: "",
+    };
   }
+
+  function commitMilestonePlacement(e) {
+    e?.preventDefault?.();
+    if (!milestonePlacement) return;
+    const label = (milestonePlacement.label || "").trim();
+    if (label === "") return;
+
+    pushEvent("milestone_placed", {
+      page: milestonePlacement.page,
+      position: milestonePlacement.position,
+      label,
+    });
+
+    milestonePlacement = null;
+  }
+
+  function cancelMilestonePlacement() {
+    milestonePlacement = null;
+  }
+
+  // Auto-focus the label input the moment the placement form mounts so
+  // the admin can start typing immediately — same affordance the selection
+  // menu doesn't need (it's a one-click action).
+  $effect(() => {
+    if (milestonePlacement && milestoneInputEl) {
+      milestoneInputEl.focus();
+    }
+  });
+
+  // Close the placement form on Escape or outside-click. Mirrors the
+  // milestone-popover effect just below.
+  $effect(() => {
+    if (!milestonePlacement) return;
+
+    const onKey = (e) => {
+      if (e.key === "Escape") cancelMilestonePlacement();
+    };
+    const onDocClick = (e) => {
+      const formEl = document.querySelector(".placement-menu");
+      if (formEl?.contains(e.target)) return;
+      cancelMilestonePlacement();
+    };
+
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDocClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDocClick);
+    };
+  });
 
   // Click a milestone marker → open the popover anchored to the marker.
   // Coordinates are viewport-fixed so the popover stays put while the user
@@ -932,6 +994,46 @@
         + Create puzzle
       </button>
     </div>
+  {/if}
+
+  {#if milestonePlacement}
+    <form
+      class="placement-menu"
+      style:left="{milestonePlacement.x}px"
+      style:top="{milestonePlacement.y}px"
+      role="dialog"
+      aria-label="Place milestone"
+      onsubmit={commitMilestonePlacement}
+    >
+      <p class="placement-title">
+        New milestone · page {milestonePlacement.page}
+      </p>
+      <input
+        bind:this={milestoneInputEl}
+        bind:value={milestonePlacement.label}
+        class="placement-input"
+        type="text"
+        maxlength="200"
+        placeholder="e.g. End of Chapter 3"
+        aria-label="Milestone label"
+      />
+      <div class="placement-actions">
+        <button
+          type="submit"
+          class="placement-btn placement-btn-primary"
+          disabled={!milestonePlacement.label?.trim()}
+        >
+          Place
+        </button>
+        <button
+          type="button"
+          class="placement-btn"
+          onclick={cancelMilestonePlacement}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   {/if}
 </div>
 
@@ -1387,6 +1489,96 @@
   .selection-btn:hover {
     color: var(--color-terracotta);
     background: var(--color-paper-2);
+  }
+
+  /* Slice 12 (revised) — milestone placement form. Same surface chrome
+     as .selection-menu so the two floating UIs read as one family, but
+     with an input + dual buttons instead of a button stack. */
+  .placement-menu {
+    position: fixed;
+    z-index: 50;
+    background: var(--color-paper);
+    border: 1px solid var(--color-paper-2);
+    box-shadow: 0 2px 8px rgba(42, 37, 33, 0.08);
+    padding: 0.6rem 0.7rem;
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    min-width: 16rem;
+    max-width: 18rem;
+  }
+
+  .placement-title {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--color-terracotta);
+    margin: 0;
+  }
+
+  .placement-input {
+    font-family: var(--font-serif);
+    font-size: 0.85rem;
+    color: var(--color-ink);
+    background: var(--color-paper);
+    border: 1px solid var(--color-paper-2);
+    border-radius: 2px;
+    padding: 0.35rem 0.5rem;
+    outline: none;
+  }
+
+  .placement-input::placeholder {
+    color: color-mix(in srgb, var(--color-ink-soft) 70%, transparent);
+  }
+
+  .placement-input:focus {
+    border-color: var(--color-terracotta);
+  }
+
+  .placement-actions {
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .placement-btn {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    padding: 0.35rem 0.7rem;
+    border-radius: 2px;
+    border: 1px solid var(--color-paper-2);
+    background: transparent;
+    color: var(--color-ink-soft);
+    cursor: pointer;
+    transition:
+      color 0.1s ease,
+      background 0.1s ease,
+      border-color 0.1s ease;
+  }
+
+  .placement-btn:hover:not(:disabled) {
+    color: var(--color-terracotta);
+    border-color: color-mix(in srgb, var(--color-terracotta) 40%, transparent);
+  }
+
+  .placement-btn-primary {
+    background: var(--color-terracotta);
+    border-color: var(--color-terracotta);
+    color: var(--color-paper);
+  }
+
+  .placement-btn-primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-terracotta) 90%, black);
+    color: var(--color-paper);
+    border-color: color-mix(in srgb, var(--color-terracotta) 90%, black);
+  }
+
+  .placement-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .error {

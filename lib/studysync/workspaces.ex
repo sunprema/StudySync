@@ -108,6 +108,32 @@ defmodule Studysync.Workspaces do
     end
   end
 
+  @doc """
+  Returns `true` when `actor` is an active member (any role) of `workspace_id`.
+  Used by `Studysync.Chat.send_message/3` (Slice 18) to gate transient chat
+  posts without going through an Ash policy — chat isn't an Ash resource.
+
+  Same authorization-bypass rationale as `actor_admin?/2`: we're reading the
+  membership to *decide* whether to allow an action, and the actor is always
+  asking about themselves.
+  """
+  def actor_member?(_workspace_id, nil), do: false
+
+  def actor_member?(workspace_id, %{id: actor_id}) do
+    Membership
+    |> Ash.Query.filter(
+      workspace_id == ^workspace_id and
+        user_id == ^actor_id and
+        status == :active
+    )
+    |> Ash.read_one(authorize?: false)
+    |> case do
+      {:ok, nil} -> false
+      {:ok, _} -> true
+      _ -> false
+    end
+  end
+
   defp find_existing_membership(workspace_id, email) do
     user_id = lookup_user_id(email)
 

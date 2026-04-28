@@ -359,6 +359,28 @@ The thin chapter rail on the left was a layout placeholder since Slice 3 — fiv
 
 ---
 
+## Slice 18 — Transient Study-Room Chat
+
+A reader-scoped chat drawer so members of a workspace reading the same book can murmur in real time alongside their annotations. Transient by design: messages live in a per-resource ETS ring buffer for the lifetime of the BEAM node, then they're gone. Annotations remain the durable record of thinking; chat is the ephemeral side-channel.
+
+This slice is additive on top of a closed core loop — it doesn't map to any item in REQUIREMENTS §12 or CLAUDE.md §9. Threading, edits, reactions, @-mentions, and typing indicators are explicitly v2; don't sneak them in here.
+
+- [x] **18.1** `Studysync.Chat` module — public surface: `send_message(actor, resource_id, body)`, `recent(resource_id, n \\ 50)`, `subscribe(resource_id)`. Not an Ash resource; nothing persists to the DB. Deviation documented at the top of `lib/studysync/chat.ex`.
+- [x] **18.2** `Studysync.Chat.Buffer` GenServer + ETS table started in `Studysync.Application`. GenServer serializes the read-modify-write so the per-resource list stays bounded at 50 messages without a race. Reads (`recent/2`) hit ETS directly via a `:protected` table with `read_concurrency: true` — no GenServer hop on the hot path.
+- [x] **18.3** PubSub topic `"resource:#{id}:chat"`, separate from the existing `"resource:#{id}"` topic. Subscribers that don't care about chat (activity rail, margin-note refetch handlers) don't see chat traffic. Lives in `Studysync.Chat.PubSub` and rides the same `:telemetry.span/3` pattern as `Annotations.PubSub`.
+- [x] **18.4** Membership gate inside `send_message/3`: actor must be an active workspace member. Non-members get `{:error, :unauthorized}` and nothing hits the buffer or PubSub. Added `Studysync.Workspaces.actor_member?/2` (mirrors `actor_admin?/2`). The `Library.Resource` lookup is `authorize?: false` so we can distinguish "no such resource" from "you aren't a member" — only `workspace_id` (a routing field) is read.
+- [x] **18.5** `StudysyncWeb.PdfLive.ChatPanel` live_component mounted inside the reader's `<main>` (which got `relative` so the panel can be `absolute`-positioned). Collapsed: pill in bottom-right corner showing `CHAT · N` in mono uppercase. Expanded: ~360px × ~50vh panel with message list, "here now" line, and a reply form.
+- [x] **18.6** Message list uses `phx-update="stream"`. The panel's section element stays in the DOM (toggled via the `hidden` Tailwind class plus `aria-hidden`) so streamed inserts persist across collapse/expand cycles — without that, items disappear when the container leaves the DOM. The `ChatScroll` JS hook listens for the live_component's `chat:message-inserted` event and only auto-scrolls when the user is already near the bottom (within 80px).
+- [x] **18.7** Visual polish per Direction 01: `bg-paper-2` panel surface, terracotta send button + sender names, mono uppercase sender + timestamp labels (`14:32 · ALEX`). No shadows; no emoji.
+- [x] **18.8** Phoenix.Presence didn't actually exist after Slice 7 (the original spec assumed it did). Added `Studysync.Presence` to the supervisor tree in this slice; the LV tracks the actor on the chat topic and the panel's "X here now" headcount comes from `Presence.list/1`. The presence-diff handler routes to the panel via `send_update/2` so the count updates in real time.
+- [x] **18.9** Server-side guards inside `send_message/3`: body length cap (500 chars, exposed via `Chat.max_body_length/0`) and a per-user rate limit (≤5 messages / 3s window) implemented in the `Buffer` GenServer state. Empty/whitespace-only bodies return `:empty_body`; oversized bodies return `:body_too_long`; over-limit returns `:rate_limited`.
+- [x] **18.10** CLAUDE.md updates: §4.1 (Ash as resource layer) gets a carve-out noting `Studysync.Chat` is intentionally non-Ash because it has no persistence; §8.4 (don't broadcast raw structs) gets a carve-out noting chat broadcasts the full `%Chat.Message{}` because there's no DB to refetch from.
+- [x] **18.11** Tests — `test/studysync/chat_test.exs` covers send, ring trim at 50, broadcast topic + sender exclusion, non-member rejection, empty/oversized body, rate limit. `test/studysync_web/live/pdf_live/show_test.exs` adds a `Slice 18 — transient chat panel` describe block: collapsed-default + seeded recents on expand, send round-trips through the form, empty body surfaces a validation error, peer broadcast lands in the panel via `send_update`. All 194 tests green.
+- [ ] **18.12** Manual verification: two browser sessions on the same resource see messages within ~500ms each direction; restarting the BEAM node leaves the buffer empty (transient behavior confirmed end-to-end).
+  - Pending — needs two browser sessions and a node restart to confirm by eye.
+
+---
+
 ## Miscellaneous (future, no commit)
 
 Loose follow-ups that aren't on the critical path. Pick up when the value is worth the churn.

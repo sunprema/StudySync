@@ -3,9 +3,14 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   alias Studysync.Annotations
   alias Studysync.Annotations.PubSub, as: AnnotationsPubSub
+  alias Studysync.Chat
+  alias Studysync.Chat.PubSub, as: ChatPubSub
   alias Studysync.Library
+  alias Studysync.Presence
   alias Studysync.Progress
   alias Studysync.Workspaces
+
+  @chat_panel_id "chat-panel"
 
   require Ash.Query
 
@@ -26,7 +31,23 @@ defmodule StudysyncWeb.PdfLive.Show do
         is_admin? = Workspaces.actor_admin?(workspace_id, actor)
         total_readers = count_workspace_members(workspace_id)
 
-        if connected?(socket), do: AnnotationsPubSub.subscribe(resource.id)
+        if connected?(socket) do
+          AnnotationsPubSub.subscribe(resource.id)
+          ChatPubSub.subscribe(resource.id)
+
+          # Slice 18.8 — track presence on the chat topic so the panel can
+          # show "X here now". Presence auto-untracks when this process exits.
+          {:ok, _} =
+            Presence.track(
+              self(),
+              ChatPubSub.topic(resource.id),
+              actor.id,
+              %{email: to_string(actor.email)}
+            )
+        end
+
+        initial_chat_messages = Chat.recent(resource.id)
+        chat_here_now = chat_here_now(resource.id)
 
         # Activity-feed deep links: `?annotation=<id>` focuses the annotation
         # (and snaps focal_page to its page); `?page=<n>` is a softer fallback
@@ -56,9 +77,9 @@ defmodule StudysyncWeb.PdfLive.Show do
           |> assign(:is_admin?, is_admin?)
           |> assign(:total_readers, total_readers)
           |> assign(:milestone_mode, false)
-          |> assign(:milestone_form, nil)
-          |> assign(:milestone_pending_placement, nil)
           |> assign(:chapters, [])
+          |> assign(:initial_chat_messages, initial_chat_messages)
+          |> assign(:chat_here_now, chat_here_now)
 
         socket =
           if initial_active_id do
@@ -109,9 +130,14 @@ defmodule StudysyncWeb.PdfLive.Show do
   def terminate(_reason, socket) do
     if Map.get(socket.assigns, :resource) do
       AnnotationsPubSub.unsubscribe(socket.assigns.resource.id)
+      ChatPubSub.unsubscribe(socket.assigns.resource.id)
     end
 
     :ok
+  end
+
+  defp chat_here_now(resource_id) do
+    resource_id |> ChatPubSub.topic() |> Presence.list() |> map_size()
   end
 
   def render(assigns) do
@@ -128,6 +154,7 @@ defmodule StudysyncWeb.PdfLive.Show do
       |> assign(:scoped_filtered, filtered_count(scoped, assigns.filter_type))
       |> assign(:scoped_annotations, scoped)
       |> assign(:page_focal_count, page_scope_count(assigns.annotations, assigns.focal_page))
+      |> assign(:chat_panel_id, @chat_panel_id)
 
     ~H"""
     <div
@@ -137,7 +164,7 @@ defmodule StudysyncWeb.PdfLive.Show do
     >
       <.chapter_rail chapters={@chapters} />
 
-      <main class="flex-1 min-w-0 flex flex-col">
+      <main class="flex-1 min-w-0 flex flex-col relative">
         <header class="flex items-baseline justify-between border-b border-paper-2 px-8 py-4 gap-4">
           <div class="min-w-0">
             <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
@@ -178,13 +205,6 @@ defmodule StudysyncWeb.PdfLive.Show do
           </div>
         </header>
 
-        <p
-          :if={@milestone_mode}
-          class="font-mono text-[10px] uppercase tracking-widest text-terracotta px-8 py-2 border-b border-paper-2 bg-terracotta/5"
-        >
-          Click anywhere on a page to drop a milestone.
-        </p>
-
         <div id="pdf-canvas" class="flex-1 overflow-hidden">
           <.svelte
             name="PdfCanvasRenderer"
@@ -204,6 +224,15 @@ defmodule StudysyncWeb.PdfLive.Show do
             socket={@socket}
           />
         </div>
+
+        <.live_component
+          module={StudysyncWeb.PdfLive.ChatPanel}
+          id={@chat_panel_id}
+          resource_id={@resource.id}
+          current_user={@current_user}
+          initial_messages={@initial_chat_messages}
+          here_now={@chat_here_now}
+        />
       </main>
 
       <aside class="w-[360px] shrink-0 bg-paper-2 border-l border-paper-2 flex flex-col">
@@ -245,14 +274,8 @@ defmodule StudysyncWeb.PdfLive.Show do
           id="margin-column"
           phx-hook="MarginColumn"
         >
-          <.milestone_form_section
-            :if={@milestone_form}
-            form={@milestone_form}
-            placement={@milestone_pending_placement}
-          />
-
           <.milestone_panel
-            :if={@milestones != [] and !@milestone_form}
+            :if={@milestones != []}
             milestones={@milestones}
             total_readers={@total_readers}
             class="mb-4"
@@ -351,44 +374,6 @@ defmodule StudysyncWeb.PdfLive.Show do
         <button type="submit" class="btn btn-primary btn-sm">Reply</button>
       </div>
     </.form>
-    """
-  end
-
-  attr :form, :any, required: true
-  attr :placement, :map, required: true
-
-  defp milestone_form_section(assigns) do
-    ~H"""
-    <section class="border-l-2 border-terracotta pl-4 py-3 mb-4 bg-paper">
-      <p class="font-mono text-[10px] uppercase tracking-widest text-terracotta mb-2">
-        New milestone · page <span class="num">{@placement.page}</span>
-      </p>
-
-      <p class="font-serif italic text-ink-soft text-sm mb-3">
-        A checkpoint your readers can stamp once they've reached it.
-      </p>
-
-      <.form for={@form} id="milestone-form" phx-submit="save_milestone" class="space-y-3">
-        <input
-          type="text"
-          id={@form[:label].id}
-          name={@form[:label].name}
-          required
-          autofocus
-          maxlength="200"
-          placeholder="e.g. End of Chapter 3"
-          value={Phoenix.HTML.Form.normalize_value("text", @form[:label].value)}
-          class="w-full input input-sm font-serif"
-        />
-
-        <div class="flex gap-2">
-          <button type="submit" class="btn btn-primary btn-sm">Place</button>
-          <button type="button" phx-click="cancel_milestone" class="btn btn-ghost btn-sm">
-            Cancel
-          </button>
-        </div>
-      </.form>
-    </section>
     """
   end
 
@@ -611,12 +596,6 @@ defmodule StudysyncWeb.PdfLive.Show do
          |> assign(:annotation_form, nil)
          |> assign(:annotation_form_type, nil)}
 
-      socket.assigns.milestone_form ->
-        {:noreply,
-         socket
-         |> assign(:milestone_form, nil)
-         |> assign(:milestone_pending_placement, nil)}
-
       socket.assigns.milestone_mode ->
         {:noreply, assign(socket, :milestone_mode, false)}
 
@@ -636,55 +615,53 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   def handle_event("toggle_milestone_mode", _params, socket) do
     if socket.assigns.is_admin? do
-      next = !socket.assigns.milestone_mode
-
-      {:noreply,
-       socket
-       |> assign(:milestone_mode, next)
-       |> assign(:milestone_form, nil)
-       |> assign(:milestone_pending_placement, nil)}
+      {:noreply, assign(socket, :milestone_mode, !socket.assigns.milestone_mode)}
     else
       {:noreply, socket}
     end
   end
 
+  # Slice 12 (revised): the floating placement form in the canvas now
+  # collects the label inline and ships `{ page, position, label }` in
+  # one shot — no margin form, no two-step. Empty/whitespace labels are
+  # dropped on the client side; we still validate server-side because
+  # the contract is the contract.
   def handle_event(
         "milestone_placed",
-        %{"page" => page, "position" => position},
+        %{"page" => page, "position" => position} = params,
         socket
       ) do
+    label = params |> Map.get("label", "") |> to_string() |> String.trim()
     actor = socket.assigns.current_user
 
-    if socket.assigns.is_admin? do
-      placement = %{page: page, position: position}
+    cond do
+      not socket.assigns.is_admin? ->
+        {:noreply, socket}
 
-      form =
-        Progress.MilestoneMarker
-        |> AshPhoenix.Form.for_create(:create_milestone,
-          actor: actor,
-          params: %{
-            "resource_id" => socket.assigns.resource.id,
-            "page_number" => page,
-            "position" => position,
-            "label" => ""
-          }
-        )
-        |> to_form()
+      label == "" ->
+        {:noreply, socket}
 
-      {:noreply,
-       socket
-       |> assign(:milestone_pending_placement, placement)
-       |> assign(:milestone_form, form)}
-    else
-      {:noreply, socket}
+      true ->
+        case Progress.create_milestone(
+               socket.assigns.resource.id,
+               page,
+               position,
+               label,
+               actor: actor,
+               load: [:created_by, :stamp_count, stamps: [:user]]
+             ) do
+          {:ok, _milestone} ->
+            {:noreply,
+             socket
+             |> refresh_milestones()
+             |> assign(:milestone_mode, false)
+             |> put_flash(:info, "Milestone placed.")}
+
+          {:error, error} ->
+            {:noreply,
+             put_flash(socket, :error, "Couldn't place milestone: #{format_error(error)}")}
+        end
     end
-  end
-
-  def handle_event("cancel_milestone", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:milestone_form, nil)
-     |> assign(:milestone_pending_placement, nil)}
   end
 
   # Slice 13: a reader confirmed a stamp from the canvas popover. Run the
@@ -714,43 +691,6 @@ defmodule StudysyncWeb.PdfLive.Show do
 
       {:error, error} ->
         {:noreply, put_flash(socket, :error, "Couldn't stamp: #{format_error(error)}")}
-    end
-  end
-
-  def handle_event("save_milestone", %{"form" => params}, socket) do
-    actor = socket.assigns.current_user
-    placement = socket.assigns.milestone_pending_placement
-    label = Map.get(params, "label", "")
-
-    if is_nil(placement) do
-      {:noreply, socket}
-    else
-      case Progress.create_milestone(
-             socket.assigns.resource.id,
-             placement.page,
-             placement.position,
-             label,
-             actor: actor,
-             load: [:created_by, :stamp_count, stamps: [:user]]
-           ) do
-        {:ok, _milestone} ->
-          # Refresh from the canonical list so the new milestone shows up
-          # in the right page-sorted slot, with stamps/stamp_count preloaded.
-          {:noreply,
-           socket
-           |> refresh_milestones()
-           |> assign(:milestone_form, nil)
-           |> assign(:milestone_pending_placement, nil)
-           |> assign(:milestone_mode, false)
-           |> put_flash(:info, "Milestone placed.")}
-
-        {:error, %AshPhoenix.Form{} = form} ->
-          {:noreply, assign(socket, :milestone_form, form)}
-
-        {:error, error} ->
-          {:noreply,
-           put_flash(socket, :error, "Couldn't place milestone: #{format_error(error)}")}
-      end
     end
   end
 
@@ -968,6 +908,41 @@ defmodule StudysyncWeb.PdfLive.Show do
       else
         {:noreply, socket}
       end
+    end
+  end
+
+  # Slice 18 — chat: forward broadcast messages to the live_component, which
+  # owns the message stream + unread counter. The sender doesn't receive its
+  # own broadcast (broadcast_from!), so this only fires for peer messages.
+  def handle_info({:chat_message, %Studysync.Chat.Message{} = message}, socket) do
+    send_update(StudysyncWeb.PdfLive.ChatPanel,
+      id: @chat_panel_id,
+      new_message: message
+    )
+
+    {:noreply, socket}
+  end
+
+  # Slice 18.8 — presence diffs on the chat topic. Recompute the headcount
+  # and forward to the panel; ignore diffs from any other topic the LV
+  # might be subscribed to.
+  def handle_info(
+        %Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic},
+        socket
+      ) do
+    chat_topic = ChatPubSub.topic(socket.assigns.resource.id)
+
+    if topic == chat_topic do
+      here_now = chat_here_now(socket.assigns.resource.id)
+
+      send_update(StudysyncWeb.PdfLive.ChatPanel,
+        id: @chat_panel_id,
+        here_now: here_now
+      )
+
+      {:noreply, assign(socket, :chat_here_now, here_now)}
+    else
+      {:noreply, socket}
     end
   end
 

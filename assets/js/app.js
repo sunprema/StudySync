@@ -84,6 +84,61 @@ const MarginColumn = {
   },
 }
 
+// ChatScroll — keeps the transient chat panel (Slice 18) pinned to the
+// latest message. Three signals drive the scroll:
+//
+//   1. `beforeUpdate`/`updated` lifecycle. Snapshot whether the user was
+//      near the bottom *before* the DOM patch, then re-pin to bottom in
+//      `updated` if they were. Catches every stream insert (own + peer)
+//      without depending on a server-pushed event arriving first.
+//   2. `chat:message-inserted` with `from_self?: true`. The user just
+//      sent the message, so scroll regardless of where they were
+//      reading. Overrides the near-bottom check.
+//   3. `chat:show`. Fired when the panel transitions from collapsed to
+//      open. The hook's `mounted` ran while the section was hidden
+//      (zero-sized), so there's no useful scroll state until expand.
+const ChatScroll = {
+  mounted() {
+    this._wasNearBottom = true
+    this._scrollToBottom()
+
+    this.handleEvent("chat:message-inserted", (payload) => {
+      const fromSelf = payload?.from_self ?? payload?.["from_self?"] ?? false
+      if (fromSelf) {
+        // Defer so the streamed-in node is in the DOM before we read
+        // scrollHeight.
+        requestAnimationFrame(() => this._scrollToBottom())
+      }
+    })
+
+    this.handleEvent("chat:show", () => {
+      requestAnimationFrame(() => this._scrollToBottom())
+    })
+  },
+
+  beforeUpdate() {
+    this._wasNearBottom = this._nearBottom()
+  },
+
+  updated() {
+    if (this._wasNearBottom) {
+      this._scrollToBottom()
+    }
+  },
+
+  _nearBottom() {
+    // When the panel is hidden the element is zero-sized; treat that as
+    // "near bottom" so the next visible patch follows new content.
+    if (this.el.clientHeight === 0) return true
+    const slack = 80
+    return this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight <= slack
+  },
+
+  _scrollToBottom() {
+    this.el.scrollTop = this.el.scrollHeight
+  },
+}
+
 // Theme — applies the current user's theme key (read from data-theme-key on
 // mount) to <html data-theme="..."> immediately so the click-to-flip feels
 // instant. The LiveView still persists the preference via the `set_theme`
@@ -111,7 +166,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ...getHooks(Components), MarginColumn, Theme},
+  hooks: {...colocatedHooks, ...getHooks(Components), MarginColumn, Theme, ChatScroll},
 })
 
 // Show progress bar on live navigation and form submits

@@ -26,6 +26,8 @@ defmodule Studysync.Application do
              Application.fetch_env!(:studysync, Oban)
            )},
           {Phoenix.PubSub, name: Studysync.PubSub},
+          Studysync.Presence,
+          Studysync.Chat.Buffer,
           # Start a worker by calling: Studysync.Worker.start_link(arg)
           # {Studysync.Worker, arg},
           # Start to serve requests, typically the last entry
