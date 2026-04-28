@@ -359,6 +359,33 @@ The thin chapter rail on the left was a layout placeholder since Slice 3 — fiv
 
 ---
 
+## Miscellaneous (future, no commit)
+
+Loose follow-ups that aren't on the critical path. Pick up when the value is worth the churn.
+
+### M1 — Rename palette tokens by role, not by hue
+
+Surfaced when adding the Nord theme (Slice TBD on themes — see CLAUDE.md §5.4). The current palette tokens (`--color-paper`, `--color-paper-2`, `--color-ink`, `--color-ink-soft`, `--color-terracotta`) are visually accurate but semantically misleading once a second theme exists: in Nord, `bg-paper` resolves to `#2e3440`, which is decidedly not paper-colored. Rename to role-based tokens so the code doesn't lie about what it does.
+
+Proposed mapping:
+
+- `--color-paper` → `--color-surface`
+- `--color-paper-2` → `--color-surface-raised`
+- `--color-ink` → `--color-text`
+- `--color-ink-soft` → `--color-text-muted`
+- `--color-terracotta` → `--color-accent`
+
+Highlight tints (`--color-peach`/`mint`/`lavender`/`butter`) stay as-is — they encode annotation type, not role.
+
+- [ ] **M1.1** Rename in `assets/css/app.css` (the `@theme` block, the `[data-theme="nord"]` overrides, and the `keyframes margin-note-pulse` reference to `var(--color-terracotta)`).
+- [ ] **M1.2** Mechanical find/replace across `lib/studysync_web/**/*.{ex,heex}` and `assets/svelte/**/*.svelte`: `bg-paper` → `bg-surface`, `bg-paper-2` → `bg-surface-raised`, `text-ink` → `text-text` (or pick a less awkward name — `text-fg`?), `text-ink-soft` → `text-text-muted`, `text-terracotta` → `text-accent`, plus `border-`/`ring-`/`from-`/`to-` variants. Roughly 216 sites.
+- [ ] **M1.3** Update CLAUDE.md §5.1 (palette table headings) and §5.4 (theme paragraph) to use the new names. The hex values and aesthetic direction don't change.
+- [ ] **M1.4** Leave the landing page untouched — it has its own self-contained `--paper`/`--ink`/`--accent` variables scoped to `.landing-page` and isn't part of the themed app.
+
+Why not now: pure refactor with zero behavior change, and it would dirty 200+ files across an otherwise clean tree. Better as a single dedicated PR when there's a quiet moment.
+
+---
+
 ## Out of Scope (don't build without explicit ask)
 
 Per CLAUDE.md §8.3 and REQUIREMENTS §9 / §11:
