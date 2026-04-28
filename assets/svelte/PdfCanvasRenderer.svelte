@@ -14,8 +14,9 @@
   //                                     rect coordinates are 0..1 normalized to the page
   //   milestone_markers    : array   — [{ id, page, position: { x, y }, label }]
   //                                     position is 0..1 normalized to the page
-  //   milestone_mode       : bool    — when true, clicking a page emits
-  //                                    `milestone_placed` instead of selecting text
+  //   is_admin?            : bool    — actor is an admin of the workspace; surfaces
+  //                                    the "+ Place milestone" option in the
+  //                                    floating selection menu.
   //   rubber_stamps        : array   — [{ id, milestone_id, user_id, email }]
   //                                     drives the "X / N readers" + avatar
   //                                     cluster on the milestone popover and the
@@ -28,10 +29,12 @@
   // Events to LiveView:
   //   text_selected      → { text, page, rect, type } when the user picks one of
   //                        the floating menu options. `type` ∈ "comment" |
-  //                        "question" | "puzzle".
+  //                        "question" | "puzzle" | "milestone". The milestone
+  //                        type is only emitted when `is_admin?` is true; the
+  //                        LV opens a margin label form (defaulting the label
+  //                        to the selected text) and creates the milestone on
+  //                        submit using the selection's rect for position.
   //   annotation_clicked → { id } when the user clicks a marker in the prose
-  //   milestone_placed   → { page, position: { x, y } } when an admin in
-  //                        milestone_mode clicks a page to drop a checkpoint.
   //   apply_stamp        → { milestone_id } when the user confirms a stamp from
   //                        the milestone popover.
   //   pages_visible      → { first, last, primary } emitted (debounced)
@@ -59,7 +62,7 @@
     total_pages = 0,
     annotations = [],
     milestone_markers = [],
-    milestone_mode = false,
+    is_admin = false,
     rubber_stamps = [],
     current_user_id = null,
     total_readers = 0,
@@ -89,13 +92,6 @@
   // Milestone popover — { x, y, milestone_id } or null. Anchored next to the
   // marker the user clicked; shows X/N readers + avatar cluster + stamp button.
   let milestonePopover = $state(null);
-  // Floating milestone-placement form (Slice 12, revised). Mirrors the
-  // selectionMenu pattern: anchored to a click point on the page surface,
-  // collects the label inline, then ships `milestone_placed` with the
-  // label so the LV creates the milestone in one shot.
-  //   { x, y, page, position: { x, y }, label }
-  let milestonePlacement = $state(null);
-  let milestoneInputEl = $state(null);
   // Hover-linking state — set by document-level "studysync:annotation-hover"
   // events dispatched from the margin column. Pure client-side; no LV roundtrip.
   let hoveredAnnotationId = $state(null);
@@ -438,13 +434,6 @@
     if (!scrollEl) return;
 
     const handler = () => {
-      // While in milestone-placement mode, the page is "click to drop"
-      // rather than "select to annotate" — keep the floating menu hidden.
-      if (milestone_mode) {
-        selectionMenu = null;
-        return;
-      }
-
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) {
         selectionMenu = null;
@@ -631,94 +620,12 @@
     );
   }
 
-  // Admin-only milestone placement (Slice 12, revised). When
-  // `milestone_mode` is true a transparent <button> overlays each page;
-  // clicking it normalises the click point against the page rect, then
-  // *opens an inline floating label form* anchored at the click — same
-  // pattern as the "Add comment" selection menu. Submitting the form
-  // ships `{ page, position, label }` in one shot and the LV creates the
-  // milestone immediately. No margin-column form, no two-step.
-  function onPageClick(e, pageNum) {
-    if (!milestone_mode) return;
-
-    const pageEl = e.currentTarget.closest("[data-page-num]");
-    if (!pageEl) return;
-    const rect = pageEl.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    milestonePlacement = {
-      // Viewport-fixed coords so the form stays anchored as the page scrolls.
-      x: e.clientX,
-      y: e.clientY,
-      page: pageNum,
-      position: {
-        x: (e.clientX - rect.left) / rect.width,
-        y: (e.clientY - rect.top) / rect.height,
-      },
-      label: "",
-    };
-  }
-
-  function commitMilestonePlacement(e) {
-    e?.preventDefault?.();
-    if (!milestonePlacement) return;
-    const label = (milestonePlacement.label || "").trim();
-    if (label === "") return;
-
-    pushEvent("milestone_placed", {
-      page: milestonePlacement.page,
-      position: milestonePlacement.position,
-      label,
-    });
-
-    milestonePlacement = null;
-  }
-
-  function cancelMilestonePlacement() {
-    milestonePlacement = null;
-  }
-
-  // Auto-focus the label input the moment the placement form mounts so
-  // the admin can start typing immediately — same affordance the selection
-  // menu doesn't need (it's a one-click action).
-  $effect(() => {
-    if (milestonePlacement && milestoneInputEl) {
-      milestoneInputEl.focus();
-    }
-  });
-
-  // Close the placement form on Escape or outside-click. Mirrors the
-  // milestone-popover effect just below.
-  $effect(() => {
-    if (!milestonePlacement) return;
-
-    const onKey = (e) => {
-      if (e.key === "Escape") cancelMilestonePlacement();
-    };
-    const onDocClick = (e) => {
-      const formEl = document.querySelector(".placement-menu");
-      if (formEl?.contains(e.target)) return;
-      cancelMilestonePlacement();
-    };
-
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onDocClick);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onDocClick);
-    };
-  });
-
   // Click a milestone marker → open the popover anchored to the marker.
   // Coordinates are viewport-fixed so the popover stays put while the user
   // skims the popover content; closing on outside click resets state.
   function onMilestoneMarkerClick(e, milestone_id) {
     e.preventDefault();
     e.stopPropagation();
-    if (milestone_mode) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
 
@@ -850,7 +757,6 @@
     {#each pages as p (p.pageNum)}
       <div
         class="page"
-        class:is-placing={milestone_mode}
         data-page-num={p.pageNum}
         style:width="{pageDisplayWidth}px"
         style:height="{pageDisplayHeight}px"
@@ -858,14 +764,6 @@
       >
         <canvas bind:this={p.canvas} aria-label="Page {p.pageNum}"></canvas>
         <div class="textLayer" bind:this={p.textLayer}></div>
-        {#if milestone_mode}
-          <button
-            type="button"
-            class="milestone-placer"
-            aria-label="Place a milestone on page {p.pageNum}"
-            onclick={(e) => onPageClick(e, p.pageNum)}
-          ></button>
-        {/if}
         <div class="annotation-overlay">
           {#each annotationsByPage.get(p.pageNum) || [] as a (a.id)}
             <button
@@ -993,47 +891,16 @@
       >
         + Create puzzle
       </button>
+      {#if is_admin}
+        <button
+          class="selection-btn selection-btn-divider"
+          data-type="milestone"
+          onmousedown={(e) => commitSelection(e, "milestone")}
+        >
+          + Place milestone
+        </button>
+      {/if}
     </div>
-  {/if}
-
-  {#if milestonePlacement}
-    <form
-      class="placement-menu"
-      style:left="{milestonePlacement.x}px"
-      style:top="{milestonePlacement.y}px"
-      role="dialog"
-      aria-label="Place milestone"
-      onsubmit={commitMilestonePlacement}
-    >
-      <p class="placement-title">
-        New milestone · page {milestonePlacement.page}
-      </p>
-      <input
-        bind:this={milestoneInputEl}
-        bind:value={milestonePlacement.label}
-        class="placement-input"
-        type="text"
-        maxlength="200"
-        placeholder="e.g. End of Chapter 3"
-        aria-label="Milestone label"
-      />
-      <div class="placement-actions">
-        <button
-          type="submit"
-          class="placement-btn placement-btn-primary"
-          disabled={!milestonePlacement.label?.trim()}
-        >
-          Place
-        </button>
-        <button
-          type="button"
-          class="placement-btn"
-          onclick={cancelMilestonePlacement}
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
   {/if}
 </div>
 
@@ -1123,35 +990,6 @@
     box-shadow: 0 0 0 1px var(--color-paper-2);
     flex-shrink: 0;
     position: relative;
-  }
-
-  .page.is-placing {
-    cursor: crosshair;
-  }
-
-  .page.is-placing :global(.textLayer) {
-    pointer-events: none;
-    user-select: none;
-  }
-
-  /* Transparent overlay button — only present while in milestone-placement
-     mode. Sits above the text layer / annotation overlay so its click wins,
-     but the canvas paints through. Inheriting the page's crosshair cursor
-     keeps the affordance consistent. */
-  .milestone-placer {
-    position: absolute;
-    inset: 0;
-    z-index: 4;
-    background: transparent;
-    border: none;
-    padding: 0;
-    margin: 0;
-    cursor: crosshair;
-  }
-
-  .milestone-placer:focus-visible {
-    outline: 2px solid var(--color-terracotta);
-    outline-offset: -2px;
   }
 
   .page canvas {
@@ -1491,94 +1329,14 @@
     background: var(--color-paper-2);
   }
 
-  /* Slice 12 (revised) — milestone placement form. Same surface chrome
-     as .selection-menu so the two floating UIs read as one family, but
-     with an input + dual buttons instead of a button stack. */
-  .placement-menu {
-    position: fixed;
-    z-index: 50;
-    background: var(--color-paper);
-    border: 1px solid var(--color-paper-2);
-    box-shadow: 0 2px 8px rgba(42, 37, 33, 0.08);
-    padding: 0.6rem 0.7rem;
-    border-radius: 2px;
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    min-width: 16rem;
-    max-width: 18rem;
-  }
-
-  .placement-title {
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: var(--color-terracotta);
-    margin: 0;
-  }
-
-  .placement-input {
-    font-family: var(--font-serif);
-    font-size: 0.85rem;
-    color: var(--color-ink);
-    background: var(--color-paper);
-    border: 1px solid var(--color-paper-2);
-    border-radius: 2px;
-    padding: 0.35rem 0.5rem;
-    outline: none;
-  }
-
-  .placement-input::placeholder {
-    color: color-mix(in srgb, var(--color-ink-soft) 70%, transparent);
-  }
-
-  .placement-input:focus {
-    border-color: var(--color-terracotta);
-  }
-
-  .placement-actions {
-    display: flex;
-    gap: 0.35rem;
-  }
-
-  .placement-btn {
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    padding: 0.35rem 0.7rem;
-    border-radius: 2px;
-    border: 1px solid var(--color-paper-2);
-    background: transparent;
-    color: var(--color-ink-soft);
-    cursor: pointer;
-    transition:
-      color 0.1s ease,
-      background 0.1s ease,
-      border-color 0.1s ease;
-  }
-
-  .placement-btn:hover:not(:disabled) {
-    color: var(--color-terracotta);
-    border-color: color-mix(in srgb, var(--color-terracotta) 40%, transparent);
-  }
-
-  .placement-btn-primary {
-    background: var(--color-terracotta);
-    border-color: var(--color-terracotta);
-    color: var(--color-paper);
-  }
-
-  .placement-btn-primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-terracotta) 90%, black);
-    color: var(--color-paper);
-    border-color: color-mix(in srgb, var(--color-terracotta) 90%, black);
-  }
-
-  .placement-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  /* Slice 12 (revised, take 2) — admin-only milestone option lives in the
+     same selection menu as comment/question/puzzle. The divider sets it
+     apart visually from the annotation actions: same row family, distinct
+     destination (margin-column label form). */
+  .selection-btn-divider {
+    border-top: 1px solid var(--color-paper-2);
+    margin-top: 0.2rem;
+    padding-top: 0.5rem;
   }
 
   .error {

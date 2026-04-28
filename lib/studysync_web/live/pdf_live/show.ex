@@ -76,7 +76,8 @@ defmodule StudysyncWeb.PdfLive.Show do
           |> assign(:milestones, milestones)
           |> assign(:is_admin?, is_admin?)
           |> assign(:total_readers, total_readers)
-          |> assign(:milestone_mode, false)
+          |> assign(:milestone_form, nil)
+          |> assign(:milestone_pending_placement, nil)
           |> assign(:chapters, [])
           |> assign(:initial_chat_messages, initial_chat_messages)
           |> assign(:chat_here_now, chat_here_now)
@@ -180,23 +181,6 @@ defmodule StudysyncWeb.PdfLive.Show do
           </div>
 
           <div class="flex items-center gap-3 shrink-0">
-            <button
-              :if={@is_admin?}
-              type="button"
-              phx-click="toggle_milestone_mode"
-              aria-pressed={to_string(@milestone_mode)}
-              class={[
-                "font-mono text-[10px] uppercase tracking-widest px-3 py-1.5 rounded-sm border transition-colors cursor-pointer",
-                if(@milestone_mode,
-                  do: "bg-terracotta text-paper border-terracotta",
-                  else:
-                    "bg-paper text-ink-soft border-paper-2 hover:border-terracotta/40 hover:text-terracotta"
-                )
-              ]}
-            >
-              {if @milestone_mode, do: "Cancel placement", else: "Place milestone"}
-            </button>
-
             <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft num">
               <span class="num">{@resource.page_count}</span> pages
             </p>
@@ -214,7 +198,7 @@ defmodule StudysyncWeb.PdfLive.Show do
                 total_pages: @resource.page_count,
                 annotations: svelte_annotations(@annotations),
                 milestone_markers: svelte_milestones(@milestones),
-                milestone_mode: @milestone_mode,
+                is_admin: @is_admin?,
                 rubber_stamps: svelte_stamps(@milestones),
                 current_user_id: @current_user.id,
                 total_readers: @total_readers,
@@ -275,10 +259,16 @@ defmodule StudysyncWeb.PdfLive.Show do
           phx-hook="MarginColumn"
         >
           <.milestone_panel
-            :if={@milestones != []}
+            :if={@milestones != [] and !@milestone_form}
             milestones={@milestones}
             total_readers={@total_readers}
             class="mb-4"
+          />
+
+          <.milestone_form_section
+            :if={@milestone_form}
+            form={@milestone_form}
+            placement={@milestone_pending_placement}
           />
 
           <.annotation_form_section
@@ -374,6 +364,44 @@ defmodule StudysyncWeb.PdfLive.Show do
         <button type="submit" class="btn btn-primary btn-sm">Reply</button>
       </div>
     </.form>
+    """
+  end
+
+  attr :form, :any, required: true
+  attr :placement, :map, required: true
+
+  defp milestone_form_section(assigns) do
+    ~H"""
+    <section class="border-l-2 border-terracotta pl-4 py-3 mb-4 bg-paper">
+      <p class="font-mono text-[10px] uppercase tracking-widest text-terracotta mb-2">
+        New milestone · page <span class="num">{@placement.page}</span>
+      </p>
+
+      <p class="font-serif italic text-ink-soft text-sm mb-3">
+        A checkpoint your readers can stamp once they've reached it.
+      </p>
+
+      <.form for={@form} id="milestone-form" phx-submit="save_milestone" class="space-y-3">
+        <input
+          type="text"
+          id={@form[:label].id}
+          name={@form[:label].name}
+          required
+          autofocus
+          maxlength="200"
+          placeholder="e.g. End of Chapter 3"
+          value={Phoenix.HTML.Form.normalize_value("text", @form[:label].value)}
+          class="w-full input input-sm font-serif"
+        />
+
+        <div class="flex gap-2">
+          <button type="submit" class="btn btn-primary btn-sm">Place</button>
+          <button type="button" phx-click="cancel_milestone" class="btn btn-ghost btn-sm">
+            Cancel
+          </button>
+        </div>
+      </.form>
+    </section>
     """
   end
 
@@ -539,6 +567,53 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   def handle_event(
         "text_selected",
+        %{"text" => text, "page" => page, "rect" => rect, "type" => "milestone"},
+        socket
+      ) do
+    # Slice 12 (revised, take 2) — admin-only branch. The selection menu's
+    # "+ Place milestone" option lands here. Open a label form in the
+    # margin pre-filled with the selected text, and stash the rect/page
+    # so `save_milestone` can place it without a second round-trip.
+    actor = socket.assigns.current_user
+
+    cond do
+      not socket.assigns.is_admin? ->
+        {:noreply, socket}
+
+      not is_map(rect) ->
+        {:noreply, socket}
+
+      true ->
+        position = position_from_rect(rect)
+        placement = %{page: page, position: position}
+
+        form =
+          Progress.MilestoneMarker
+          |> AshPhoenix.Form.for_create(:create_milestone,
+            actor: actor,
+            params: %{
+              "resource_id" => socket.assigns.resource.id,
+              "page_number" => page,
+              "position" => position,
+              "label" => default_milestone_label(text)
+            }
+          )
+          |> to_form()
+
+        {:noreply,
+         socket
+         |> assign(:milestone_pending_placement, placement)
+         |> assign(:milestone_form, form)
+         # Close any open annotation chrome so the two forms don't fight
+         # for the margin column.
+         |> assign(:selection, nil)
+         |> assign(:annotation_form, nil)
+         |> assign(:annotation_form_type, nil)}
+    end
+  end
+
+  def handle_event(
+        "text_selected",
         %{"text" => text, "page" => page, "rect" => rect} = params,
         socket
       ) do
@@ -570,7 +645,11 @@ defmodule StudysyncWeb.PdfLive.Show do
      socket
      |> assign(:selection, selection)
      |> assign(:annotation_form, form)
-     |> assign(:annotation_form_type, type)}
+     |> assign(:annotation_form_type, type)
+     # If the admin had a milestone form open, close it — the new
+     # annotation flow takes priority.
+     |> assign(:milestone_form, nil)
+     |> assign(:milestone_pending_placement, nil)}
   end
 
   def handle_event("cancel_annotation", _params, socket) do
@@ -596,8 +675,11 @@ defmodule StudysyncWeb.PdfLive.Show do
          |> assign(:annotation_form, nil)
          |> assign(:annotation_form_type, nil)}
 
-      socket.assigns.milestone_mode ->
-        {:noreply, assign(socket, :milestone_mode, false)}
+      socket.assigns.milestone_form ->
+        {:noreply,
+         socket
+         |> assign(:milestone_form, nil)
+         |> assign(:milestone_pending_placement, nil)}
 
       socket.assigns.expanded_thread_id ->
         {:noreply,
@@ -613,39 +695,39 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   def handle_event("reader_keydown", _params, socket), do: {:noreply, socket}
 
-  def handle_event("toggle_milestone_mode", _params, socket) do
-    if socket.assigns.is_admin? do
-      {:noreply, assign(socket, :milestone_mode, !socket.assigns.milestone_mode)}
-    else
-      {:noreply, socket}
-    end
+  def handle_event("cancel_milestone", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:milestone_form, nil)
+     |> assign(:milestone_pending_placement, nil)}
   end
 
-  # Slice 12 (revised): the floating placement form in the canvas now
-  # collects the label inline and ships `{ page, position, label }` in
-  # one shot — no margin form, no two-step. Empty/whitespace labels are
-  # dropped on the client side; we still validate server-side because
-  # the contract is the contract.
-  def handle_event(
-        "milestone_placed",
-        %{"page" => page, "position" => position} = params,
-        socket
-      ) do
-    label = params |> Map.get("label", "") |> to_string() |> String.trim()
+  # Slice 12 (revised, take 2): milestone placement now lives in the
+  # selection menu next to comment/question/puzzle. The Svelte canvas
+  # ships `text_selected` with `type: "milestone"` (admin-only), the LV
+  # opens a label form in the margin pre-filled with the selected text
+  # (matching Add Comment's pattern), and `save_milestone` creates the
+  # milestone using the cached selection rect for position.
+  def handle_event("save_milestone", %{"form" => params}, socket) do
     actor = socket.assigns.current_user
+    placement = socket.assigns.milestone_pending_placement
+    label = Map.get(params, "label", "")
 
     cond do
-      not socket.assigns.is_admin? ->
+      is_nil(placement) ->
         {:noreply, socket}
 
-      label == "" ->
-        {:noreply, socket}
+      not socket.assigns.is_admin? ->
+        {:noreply,
+         socket
+         |> assign(:milestone_form, nil)
+         |> assign(:milestone_pending_placement, nil)}
 
       true ->
         case Progress.create_milestone(
                socket.assigns.resource.id,
-               page,
-               position,
+               placement.page,
+               placement.position,
                label,
                actor: actor,
                load: [:created_by, :stamp_count, stamps: [:user]]
@@ -654,8 +736,12 @@ defmodule StudysyncWeb.PdfLive.Show do
             {:noreply,
              socket
              |> refresh_milestones()
-             |> assign(:milestone_mode, false)
+             |> assign(:milestone_form, nil)
+             |> assign(:milestone_pending_placement, nil)
              |> put_flash(:info, "Milestone placed.")}
+
+          {:error, %AshPhoenix.Form{} = form} ->
+            {:noreply, assign(socket, :milestone_form, form)}
 
           {:error, error} ->
             {:noreply,
@@ -1257,6 +1343,25 @@ defmodule StudysyncWeb.PdfLive.Show do
   defp parse_create_type("question"), do: :question
   defp parse_create_type("puzzle"), do: :puzzle
   defp parse_create_type(_), do: :comment
+
+  # Anchor the milestone at the top-left of the selection rect — the
+  # natural reading entry point of the highlighted phrase. Falls back to
+  # 0/0 if a coordinate is missing.
+  defp position_from_rect(%{"x" => x, "y" => y}) when is_number(x) and is_number(y),
+    do: %{"x" => x, "y" => y}
+
+  defp position_from_rect(rect) when is_map(rect) do
+    %{"x" => Map.get(rect, "x", 0), "y" => Map.get(rect, "y", 0)}
+  end
+
+  # The selected text is the most useful default label. Trim and cap at
+  # 200 chars (the milestone label attribute's hard limit) so a long
+  # selection doesn't break the create action.
+  defp default_milestone_label(text) when is_binary(text) do
+    text |> String.trim() |> String.slice(0, 200)
+  end
+
+  defp default_milestone_label(_), do: ""
 
   # Slice 14: visibility comes off the form as either "private" (checkbox
   # ticked) or "workspace" (the hidden default the unchecked box reveals).

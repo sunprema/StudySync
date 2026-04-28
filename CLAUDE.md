@@ -70,7 +70,7 @@ This is the only API surface between the two worlds. Keep it small and stable.
 - `total_pages` — page count from the persisted resource, used for the indicator before PDF.js finishes loading (added Slice 3)
 - `annotations[]`
 - `milestone_markers[]` — `[{ id, page, position: { x, y }, label }]`, position normalized 0..1 to the page (added Slice 12)
-- `milestone_mode` — boolean; when true, clicking a page emits `milestone_placed` instead of opening the selection menu. Admin-only path. (added Slice 12)
+- `is_admin?` — boolean; true when the actor is an admin of the resource's workspace. Surfaces the "+ Place milestone" option in the floating selection menu. (added Slice 12; replaced the earlier `milestone_mode` prop when placement moved into the selection menu.)
 - `rubber_stamps[]` — `[{ id, milestone_id, user_id, email }]` — every stamp visible to the actor on this resource. The canvas uses it to render the per-milestone "X / N readers" popover and to know whether the current user has already stamped. (added Slice 13)
 - `current_user_id` — UUID of the signed-in actor. The canvas compares against `rubber_stamps[].user_id` to decide whether to show the stamp button or a "Stamped" indicator on the milestone popover. (added Slice 13)
 - `total_readers` — workspace active-member count, used as the denominator in the "X / N readers" label on the milestone popover. (added Slice 13)
@@ -78,9 +78,13 @@ This is the only API surface between the two worlds. Keep it small and stable.
 
 **Events (Svelte → LiveView):**
 
-- `text_selected` → `{ text, page, rect, type }` — `type` ∈ `"comment" | "question" | "puzzle"` (added Slice 10)
+- `text_selected` → `{ text, page, rect, type }` — `type` ∈ `"comment" | "question" | "puzzle" | "milestone"`. The `"milestone"` variant is admin-only and only emitted when the canvas's `is_admin?` prop is true (Slice 12 revised); the LV opens a label form in the margin pre-filled with the selected text, and `save_milestone` creates the milestone using the rect's top-left for `position`. (added Slice 10; `"milestone"` added when the placement UX moved into the selection menu.)
 - `annotation_clicked` → `{ id }`
-- `milestone_placed` → `{ page, position: { x, y }, label }` — fired in `milestone_mode` when an admin submits the floating placement form on a page. The canvas now collects the label inline at the click point (mirroring the "Add comment" floating menu) and ships it alongside the position; the LV creates the milestone in one shot, no margin-column form. (added Slice 12; payload extended to include `label` when the placement UI moved into the canvas — see CLAUDE.md update for details)
+<!-- `milestone_placed` was retired in Slice 12 (revised, take 2): milestone
+placement now flows through `text_selected` with `type: "milestone"`, so
+there's no dedicated event. The earlier "click anywhere to drop" mode and
+the `milestone_mode` prop are gone with it. -->
+
 - `apply_stamp` → `{ milestone_id }` — fired when the user confirms a stamp from the per-milestone popover. The LiveView authorises through Ash, applies the stamp, and broadcasts (`:stamp_applied`) so all open readers re-fetch and patch. (added Slice 13)
 - `pages_visible` → `{ first, last, primary }` — debounced (~120ms) report of the page range currently intersecting the viewport. `first`/`last` come from the canvas's IntersectionObserver (with its 1000px rootMargin) and define the virtualization range. `primary` is the page with the largest *true* viewport overlap — the LiveView uses it as the focal page so the margin column's focal-page highlight and the "Page" scope tab match what the reader is actually looking at, not whatever sliver of an adjacent page sits within the rootMargin buffer. (added Slice 15; lazy-hydration role removed in Slice 15a — the reader now eagerly loads the whole book at mount. `primary` added when the margin scope tabs landed.)
 - `outline_loaded` → `{ chapters: [{ label, page }] }` — fired once after PDF.js loads the document, with the top-level outline entries flattened to `{ label, page }` pairs (page is 1-indexed). Empty list when the PDF has no outline. The LiveView stores it as `@chapters` and feeds the chapter rail. Top-level only — nested outline items are ignored to keep the rail visually quiet. (added Slice 17)

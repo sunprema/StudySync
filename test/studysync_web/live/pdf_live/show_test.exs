@@ -936,81 +936,48 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
   end
 
   describe "milestones (Slice 12)" do
-    test "admins see the Place milestone toggle in the header", %{
+    test "the dedicated header toggle and banner are gone for everyone", %{
       conn: conn,
       user: user,
       workspace: ws,
       resource: r
     } do
+      # Slice 12 (revised, take 2): milestone placement moved into the
+      # canvas's existing selection menu, gated by `is_admin?`. The
+      # admin-only header toggle and the placement-hint banner are
+      # retired entirely.
       {:ok, _view, html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
 
-      assert html =~ ~s(phx-click="toggle_milestone_mode")
-      assert html =~ "Place milestone"
-    end
-
-    test "non-admin members do not see the Place milestone toggle", %{
-      conn: conn,
-      user: owner,
-      workspace: ws,
-      resource: r
-    } do
-      member = register_user("non-admin-reader@example.com")
-      _ = Workspaces.invite_member!(ws.id, "non-admin-reader@example.com", actor: owner)
-
-      [pending] =
-        Studysync.Workspaces.Membership
-        |> Ash.Query.filter(user_id == ^member.id)
-        |> Ash.read!(authorize?: false)
-
-      {:ok, _} = Workspaces.accept_invite(pending, actor: member)
-
-      {:ok, _view, html} =
-        conn |> sign_in(member) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
-
-      refute html =~ ~s(phx-click="toggle_milestone_mode")
-      refute html =~ "Place milestone"
-    end
-
-    test "toggling milestone mode flips the toggle button label", %{
-      conn: conn,
-      user: user,
-      workspace: ws,
-      resource: r
-    } do
-      {:ok, view, html} =
-        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
-
-      assert html =~ "Place milestone"
+      refute html =~ "toggle_milestone_mode"
+      refute html =~ "Click anywhere on a page to drop a milestone"
       refute html =~ "Cancel placement"
-
-      flipped =
-        view
-        |> element(~s(button[phx-click="toggle_milestone_mode"]))
-        |> render_click()
-
-      # Slice 12 (revised): the placement hint banner is gone — the
-      # floating form on the page surface tells the admin what to do.
-      # The toggle button itself flips to "Cancel placement".
-      assert flipped =~ "Cancel placement"
-      refute flipped =~ "Click anywhere on a page to drop a milestone."
     end
 
-    test "milestone_placed with a label persists and renders the marker in one shot",
+    test "selection menu's milestone option opens a label form pre-filled with the selected text",
          %{conn: conn, user: user, workspace: ws, resource: r} do
       {:ok, view, _html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
 
-      view |> element(~s(button[phx-click="toggle_milestone_mode"])) |> render_click()
+      # Admin clicks "+ Place milestone" in the selection menu — the
+      # canvas ships `text_selected` with type "milestone" and the
+      # selection rect.
+      open_html =
+        render_hook(view, "text_selected", %{
+          "text" => "End of Chapter 2",
+          "page" => 2,
+          "rect" => %{"x" => 0.4, "y" => 0.3, "width" => 0.2, "height" => 0.04},
+          "type" => "milestone"
+        })
 
-      # The Svelte canvas now collects the label in a floating form on
-      # click and ships `{ page, position, label }` together. No
-      # intermediate margin form, no save_milestone round-trip.
-      render_hook(view, "milestone_placed", %{
-        "page" => 2,
-        "position" => %{"x" => 0.4, "y" => 0.3},
-        "label" => "End of Chapter 2"
-      })
+      assert open_html =~ "New milestone · page"
+      assert has_element?(view, "#milestone-form")
+      # Default label is the selected text — admin can edit before saving.
+      assert open_html =~ ~s(value="End of Chapter 2")
+
+      view
+      |> form("#milestone-form", form: %{label: "End of Chapter 2"})
+      |> render_submit()
 
       [persisted] =
         Progress.list_milestones!(
@@ -1020,41 +987,17 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
 
       assert persisted.label == "End of Chapter 2"
       assert persisted.page_number == 2
+      # Position is anchored to the rect's top-left.
       assert persisted.position == %{"x" => 0.4, "y" => 0.3}
 
       after_save = render(view)
 
-      # Margin column shows the milestone in the panel
       assert after_save =~ "End of Chapter 2"
       assert after_save =~ ~s(id="milestone-#{persisted.id}")
-      # Mode auto-exits after a successful placement
-      refute after_save =~ "Cancel placement"
+      refute has_element?(view, "#milestone-form")
     end
 
-    test "milestone_placed with an empty label is a no-op", %{
-      conn: conn,
-      user: user,
-      workspace: ws,
-      resource: r
-    } do
-      {:ok, view, _html} =
-        conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
-
-      view |> element(~s(button[phx-click="toggle_milestone_mode"])) |> render_click()
-
-      render_hook(view, "milestone_placed", %{
-        "page" => 1,
-        "position" => %{"x" => 0.5, "y" => 0.5},
-        "label" => "   "
-      })
-
-      assert Progress.list_milestones!(
-               actor: user,
-               query: [filter: [resource_id: r.id]]
-             ) == []
-    end
-
-    test "milestone_placed from a non-admin is a no-op", %{
+    test "non-admins shipping text_selected with type=milestone are silently ignored", %{
       conn: conn,
       user: owner,
       workspace: ws,
@@ -1073,11 +1016,16 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       {:ok, view, _html} =
         conn |> sign_in(member) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
 
-      render_hook(view, "milestone_placed", %{
+      # The canvas wouldn't render the option for a non-admin — but a
+      # forged event must still be a no-op server-side.
+      render_hook(view, "text_selected", %{
+        "text" => "Sneaky",
         "page" => 1,
-        "position" => %{"x" => 0.5, "y" => 0.5},
-        "label" => "Sneaky"
+        "rect" => %{"x" => 0.5, "y" => 0.5, "width" => 0.1, "height" => 0.04},
+        "type" => "milestone"
       })
+
+      refute has_element?(view, "#milestone-form")
 
       assert Progress.list_milestones!(
                actor: owner,
