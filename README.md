@@ -4,6 +4,19 @@ A collaborative, AI-assisted study platform centered on PDF-based learning. A re
 
 The core loop: **Read → Highlight → Annotate → Discuss → AI → Save → Progress.**
 
+## Screenshots
+
+**Homeage**
+
+![Home page](screenshots/home.png)
+
+**Group Progress**
+![Group progress](screenshots/group.png)
+**PDF Reader**
+![PDF Reader](screenshots/reader.png)
+
+---
+
 ## Design direction
 
 StudySync ships **Direction 01 — Margin Notes**: a classical book-margin metaphor. Annotations live in a literal margin column to the right of the page, anchored via footnote-style numbered markers (¹, ², ³) inline in the prose. Warm, literary, paper-cream surface with terracotta as the lone accent.
@@ -42,8 +55,8 @@ Two themes are available: `study_sync_default` (Margin Notes, default) and `nord
 
 To start your Phoenix server:
 
-* Run `mix setup` to install and setup dependencies
-* Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+- Run `mix setup` to install and setup dependencies
+- Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
 
 Then visit [`localhost:4000`](http://localhost:4000) from your browser.
 
@@ -69,6 +82,6 @@ Ready to run in production? See the [Phoenix deployment guides](https://hexdocs.
 
 ## Learn more
 
-* Phoenix: https://www.phoenixframework.org/ · [guides](https://hexdocs.pm/phoenix/overview.html) · [docs](https://hexdocs.pm/phoenix)
-* Ash Framework: https://ash-hq.org · [docs](https://hexdocs.pm/ash)
-* Live Svelte: https://hexdocs.pm/live_svelte
+- Phoenix: https://www.phoenixframework.org/ · [guides](https://hexdocs.pm/phoenix/overview.html) · [docs](https://hexdocs.pm/phoenix)
+- Ash Framework: https://ash-hq.org · [docs](https://hexdocs.pm/ash)
+- Live Svelte: https://hexdocs.pm/live_svelte

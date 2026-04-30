@@ -41,6 +41,8 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
           |> assign(:page_title, workspace.name <> " — Library")
           |> assign(:title, "")
           |> assign(:upload_error, nil)
+          |> assign(:has_resources?, resources != [])
+          |> assign(:show_uploader, resources == [])
           |> assign(:members, members)
           |> assign(:progress_matrix, progress_matrix)
           |> assign(:milestones_by_resource, milestones_by_resource)
@@ -89,92 +91,48 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
             <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
           </header>
 
-          <section class="mb-12">
-            <h2 class="font-mono text-xs uppercase tracking-widest text-ink-soft mb-2">
-              Add a PDF
-            </h2>
-
-            <form
-              id="upload-form"
-              phx-change="validate"
-              phx-submit="upload"
-              class="space-y-4 border border-paper-2 bg-paper-2/40 p-5 rounded"
-            >
-              <div>
-                <label
-                  for="resource-title"
-                  class="font-mono text-xs uppercase tracking-widest text-ink-soft"
-                >
-                  Title
-                </label>
-                <input
-                  id="resource-title"
-                  name="title"
-                  type="text"
-                  value={@title}
-                  placeholder="Invisible Cities"
-                  class="w-full input mt-1"
-                  required
-                />
-              </div>
-
-              <div>
-                <label class="font-mono text-xs uppercase tracking-widest text-ink-soft">
-                  PDF file
-                </label>
-                <.live_file_input upload={@uploads.pdf} class="block mt-1" />
-                <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-1">
-                  Max 50 MB
-                </p>
-              </div>
-
-              <div :for={entry <- @uploads.pdf.entries} class="flex items-center gap-3">
-                <span class="font-serif text-sm text-ink truncate">{entry.client_name}</span>
-                <progress
-                  value={entry.progress}
-                  max="100"
-                  class="progress progress-primary flex-1"
-                >
-                  {entry.progress}%
-                </progress>
-                <button
-                  type="button"
-                  phx-click="cancel_upload"
-                  phx-value-ref={entry.ref}
-                  class="btn btn-ghost btn-xs"
-                >
-                  cancel
-                </button>
-              </div>
-
-              <div :for={err <- upload_errors(@uploads.pdf)} class="text-error font-mono text-xs">
-                {error_to_string(err)}
-              </div>
-
-              <p :if={@upload_error} class="text-error font-mono text-xs">{@upload_error}</p>
-
-              <div class="flex gap-3">
-                <button type="submit" class="btn btn-primary">Upload</button>
-                <.link navigate={~p"/workspaces/#{@workspace.id}"} class="btn btn-ghost">
-                  Back
-                </.link>
-              </div>
-            </form>
+          <%!-- Empty shelf: the uploader is the page. --%>
+          <section :if={not @has_resources?} class="text-center py-12">
+            <h2 class="font-display text-5xl text-ink">An empty shelf.</h2>
+            <p class="font-serif italic text-ink-soft mt-4 max-w-md mx-auto">
+              No PDFs yet — your group reads together. Drop a book in to begin.
+            </p>
+            <div class="max-w-xl mx-auto mt-10 text-left">
+              <.upload_form
+                uploads={@uploads}
+                title={@title}
+                upload_error={@upload_error}
+                show_close?={false}
+              />
+            </div>
           </section>
 
-          <section>
-            <h2 class="font-mono text-xs uppercase tracking-widest text-ink-soft mb-6">
-              Books
-            </h2>
+          <%!-- Books shelf: the books are the page; uploader is a quiet add-action. --%>
+          <section :if={@has_resources?}>
+            <div class="flex items-baseline justify-between border-b border-paper-2 pb-3 mb-8">
+              <h2 class="font-mono text-xs uppercase tracking-widest text-ink-soft">
+                Books
+              </h2>
+              <button
+                :if={not @show_uploader}
+                type="button"
+                phx-click="open_uploader"
+                class="font-mono text-xs uppercase tracking-widest text-terracotta hover:underline"
+              >
+                + Place a new book
+              </button>
+            </div>
+
+            <div :if={@show_uploader} class="mb-12">
+              <.upload_form
+                uploads={@uploads}
+                title={@title}
+                upload_error={@upload_error}
+                show_close?={true}
+              />
+            </div>
 
             <div id="resources" phx-update="stream" class="space-y-12">
-              <p
-                id="resources-empty"
-                class="hidden only:block font-serif italic text-ink-soft py-4"
-              >
-                No PDFs yet. Add the first one above.
-              </p>
-
               <article
                 :for={{dom_id, resource} <- @streams.resources}
                 id={dom_id}
@@ -265,12 +223,42 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
     """
   end
 
-  def handle_event("validate", %{"title" => title}, socket) do
+  # Lenient on params: the title input is only rendered after a file is
+  # staged, so the first phx-change (triggered by live_file_input itself)
+  # arrives without a "title" key. When the title is still blank and we
+  # have an entry, derive a sensible default from the filename so the user
+  # doesn't have to type one in.
+  def handle_event("validate", params, socket) do
+    current_title = Map.get(params, "title", socket.assigns.title) || ""
+
+    title =
+      case {String.trim(current_title), socket.assigns.uploads.pdf.entries} do
+        {"", [%{client_name: name} | _]} -> derive_title(name)
+        _ -> current_title
+      end
+
     {:noreply, assign(socket, :title, title)}
   end
 
   def handle_event("cancel_upload", %{"ref" => ref}, socket) do
     {:noreply, cancel_upload(socket, :pdf, ref)}
+  end
+
+  def handle_event("open_uploader", _params, socket) do
+    {:noreply, assign(socket, :show_uploader, true)}
+  end
+
+  def handle_event("close_uploader", _params, socket) do
+    socket =
+      Enum.reduce(socket.assigns.uploads.pdf.entries, socket, fn entry, acc ->
+        cancel_upload(acc, :pdf, entry.ref)
+      end)
+
+    {:noreply,
+     socket
+     |> assign(:show_uploader, false)
+     |> assign(:title, "")
+     |> assign(:upload_error, nil)}
   end
 
   def handle_event("upload", %{"title" => title}, socket) do
@@ -311,6 +299,8 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
              socket
              |> assign(:title, "")
              |> assign(:upload_error, nil)
+             |> assign(:has_resources?, true)
+             |> assign(:show_uploader, false)
              |> assign(:progress_matrix, matrix)
              |> assign(:milestones_by_resource, milestones)
              |> stream_insert(:resources, resource, at: 0)
@@ -581,6 +571,115 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
     |> Map.get(resource_id, [])
     |> Enum.map(&(Map.get(&1, :time_spent_seconds) || 0))
     |> Enum.sum()
+  end
+
+  # The upload affordance is the same surface in both empty-shelf and steady
+  # state — only the surrounding context differs. Keeping it here as a
+  # private function component so the two render paths stay in sync.
+  attr :uploads, :map, required: true
+  attr :title, :string, required: true
+  attr :upload_error, :string, default: nil
+  attr :show_close?, :boolean, default: false
+
+  defp upload_form(assigns) do
+    ~H"""
+    <form id="upload-form" phx-change="validate" phx-submit="upload" class="space-y-5">
+      <label
+        for={@uploads.pdf.ref}
+        phx-drop-target={@uploads.pdf.ref}
+        class={[
+          "block cursor-pointer rounded-lg border-2 border-dashed border-ink-soft/30",
+          "bg-paper px-8 py-12 text-center transition",
+          "hover:border-terracotta/60 hover:bg-paper-2/30",
+          "[&.phx-drop-target-active]:border-terracotta",
+          "[&.phx-drop-target-active]:border-solid",
+          "[&.phx-drop-target-active]:bg-paper-2"
+        ]}
+      >
+        <p class="font-display text-3xl text-ink">Drop a PDF here</p>
+        <p class="font-mono text-xs uppercase tracking-widest text-ink-soft mt-3">
+          or click to browse · 50 MB max
+        </p>
+        <.live_file_input upload={@uploads.pdf} class="sr-only" />
+      </label>
+
+      <div
+        :for={entry <- @uploads.pdf.entries}
+        class="space-y-4 border border-paper-2 bg-paper-2/40 px-5 py-4 rounded"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <span class="font-serif text-base text-ink truncate">{entry.client_name}</span>
+          <button
+            type="button"
+            phx-click="cancel_upload"
+            phx-value-ref={entry.ref}
+            class="font-mono text-[10px] uppercase tracking-widest text-ink-soft hover:text-terracotta shrink-0"
+          >
+            remove
+          </button>
+        </div>
+        <progress
+          :if={entry.progress > 0}
+          value={entry.progress}
+          max="100"
+          class="progress progress-primary w-full"
+        >
+          {entry.progress}%
+        </progress>
+        <div>
+          <label
+            for="resource-title"
+            class="font-mono text-xs uppercase tracking-widest text-ink-soft"
+          >
+            Title
+          </label>
+          <input
+            id="resource-title"
+            name="title"
+            type="text"
+            value={@title}
+            placeholder="Invisible Cities"
+            class="w-full input mt-2 font-serif"
+            required
+          />
+        </div>
+      </div>
+
+      <div :for={err <- upload_errors(@uploads.pdf)} class="text-error font-mono text-xs">
+        {error_to_string(err)}
+      </div>
+      <p :if={@upload_error} class="text-error font-mono text-xs">{@upload_error}</p>
+
+      <div :if={@uploads.pdf.entries != []} class="flex items-center gap-4">
+        <button type="submit" class="btn btn-primary">Place on shelf</button>
+        <button
+          :if={@show_close?}
+          type="button"
+          phx-click="close_uploader"
+          class="font-mono text-xs uppercase tracking-widest text-ink-soft hover:text-terracotta"
+        >
+          Cancel
+        </button>
+      </div>
+
+      <div :if={@show_close? and @uploads.pdf.entries == []}>
+        <button
+          type="button"
+          phx-click="close_uploader"
+          class="font-mono text-xs uppercase tracking-widest text-ink-soft hover:text-terracotta"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+    """
+  end
+
+  defp derive_title(filename) do
+    filename
+    |> Path.rootname()
+    |> String.replace(["_", "-"], " ")
+    |> String.trim()
   end
 
   defp error_to_string(:too_large), do: "File is too large."

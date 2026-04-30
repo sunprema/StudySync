@@ -98,6 +98,7 @@ defmodule StudysyncWeb.LibraryComponents do
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-terracotta/60 focus-visible:ring-offset-1 focus-visible:ring-offset-paper-2",
         cond do
           @active? -> "border-terracotta bg-paper"
+          @annotation.type == :ai_response -> "border-butter/60 bg-butter/10"
           @focal? -> "bg-paper " <> type_border_class(@annotation.type)
           true -> type_border_class(@annotation.type)
         end
@@ -120,12 +121,19 @@ defmodule StudysyncWeb.LibraryComponents do
       }
       phx-blur={JS.dispatch("studysync:annotation-hover", to: "body", detail: %{id: nil})}
     >
-      <div class="flex items-baseline gap-2 mb-1 flex-wrap">
-        <.footnote_marker number={@number} class="!text-[0.85rem]" />
+      <%!-- Number badge + type tag row --%>
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <%!-- Hierarchy: number badge is visually the anchor of the card --%>
+        <span class={[
+          "inline-flex items-center justify-center w-5 h-5 rounded-sm font-mono text-[0.7rem] font-semibold num shrink-0",
+          type_number_badge_classes(@annotation.type)
+        ]}>
+          {@number}
+        </span>
         <span
           :if={@annotation.type != :comment}
           class={[
-            "font-mono text-[9px] uppercase tracking-widest px-1 py-px rounded-sm border",
+            "font-mono text-[9px] uppercase tracking-widest px-1.5 py-px rounded-sm border",
             type_tag_classes(@annotation.type)
           ]}
         >
@@ -139,7 +147,7 @@ defmodule StudysyncWeb.LibraryComponents do
         >
           <span class="hero-lock-closed-mini size-3" aria-hidden="true"></span> Private
         </span>
-        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft truncate">
+        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft truncate ml-auto">
           {@author_email || "unknown"}
         </p>
       </div>
@@ -148,10 +156,13 @@ defmodule StudysyncWeb.LibraryComponents do
         "font-serif italic text-ink-soft text-sm border-l pl-2 mb-2 line-clamp-6 whitespace-pre-line",
         type_quote_border_class(@annotation.type)
       ]}>
-        “{@annotation.text}”
+        "{@annotation.text}"
       </blockquote>
 
-      <p class="font-serif text-ink text-sm whitespace-pre-wrap">{@annotation.body}</p>
+      <%!-- Primary annotation body: larger text weight than replies --%>
+      <p class="font-serif text-ink text-[0.9rem] leading-snug whitespace-pre-wrap">
+        {@annotation.body}
+      </p>
 
       <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-2">
         {relative_time(@annotation.inserted_at, @now)}
@@ -172,13 +183,14 @@ defmodule StudysyncWeb.LibraryComponents do
           <% @expanded? -> %>
             Hide thread
           <% @reply_count > 0 -> %>
-            {@reply_count} {if @reply_count == 1, do: "reply", else: "replies"}
+            <span class="num">{@reply_count}</span>
+            {if @reply_count == 1, do: "reply", else: "replies"}
           <% true -> %>
             Reply
         <% end %>
       </button>
 
-      <div :if={@expanded?} id={"thread-#{@annotation.id}"} class="mt-3">
+      <div :if={@expanded?} id={"thread-#{@annotation.id}"} class="mt-3 space-y-0">
         {render_slot(@thread)}
       </div>
     </article>
@@ -201,17 +213,25 @@ defmodule StudysyncWeb.LibraryComponents do
         else: Phoenix.Component.assign(assigns, :now, DateTime.utc_now())
 
     ~H"""
+    <%!-- Replies are visually lighter/indented vs the primary annotation body.
+         AI replies get a distinct butter tint so they read at a glance. --%>
     <article
       id={"thread-reply-#{@reply.id}"}
-      class="flex gap-3 py-3 border-t border-paper-2/60 first:border-t-0"
+      class={[
+        "flex gap-2.5 py-2.5 border-t border-paper-2/50 first:border-t-0 ml-2",
+        if(@reply.is_ai_response,
+          do: "bg-butter/15 -mx-4 px-6 rounded-sm border-none mt-1",
+          else: ""
+        )
+      ]}
     >
       <div
         aria-hidden="true"
         class={[
-          "shrink-0 w-7 h-7 rounded-full flex items-center justify-center",
-          "font-mono text-[10px] uppercase tracking-widest",
+          "shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5",
+          "font-mono text-[9px] uppercase tracking-widest",
           if(@reply.is_ai_response,
-            do: "bg-terracotta/15 text-terracotta",
+            do: "bg-butter text-ink",
             else: "bg-paper-2 text-ink-soft"
           )
         ]}
@@ -220,21 +240,25 @@ defmodule StudysyncWeb.LibraryComponents do
       </div>
 
       <div class="min-w-0 flex-1">
-        <div class="flex items-baseline gap-2 mb-1">
-          <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft truncate">
+        <div class="flex items-baseline gap-1.5 mb-1">
+          <p class="font-mono text-[9px] uppercase tracking-widest text-ink-soft/80 truncate">
             {@author_email || "unknown"}
           </p>
+          <%!-- AI tag — mono caps, distinct from regular reply authors --%>
           <span
             :if={@reply.is_ai_response}
-            class="font-mono text-[9px] uppercase tracking-widest text-terracotta border border-terracotta/40 px-1 py-px rounded-sm"
+            class="font-mono text-[8px] uppercase tracking-widest text-ink border border-ink-soft/40 bg-butter/40 px-1 py-px rounded-sm"
           >
             AI
           </span>
         </div>
 
-        <p class="font-serif text-ink text-sm whitespace-pre-wrap">{@reply.body}</p>
+        <%!-- Reply body is visually lighter than the primary annotation body --%>
+        <p class="font-serif text-ink-soft text-[0.8rem] leading-snug whitespace-pre-wrap">
+          {@reply.body}
+        </p>
 
-        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-2">
+        <p class="font-mono text-[9px] uppercase tracking-widest text-ink-soft/70 mt-1.5">
           {relative_time(@reply.inserted_at, @now)}
         </p>
       </div>
@@ -242,11 +266,9 @@ defmodule StudysyncWeb.LibraryComponents do
     """
   end
 
-  # Per-type visual treatment (Slice 10). Comments stay quiet — they're the
-  # most common type, and adding a tag to every card would muddy the rail.
-  # Questions/puzzles get a small mono-caps label and a pastel tint on the
-  # left border + snippet quote rule, mapping to the highlight tints in
-  # CLAUDE.md §5.1.
+  # Per-type visual treatment (Slice 10 + feedback hierarchy pass).
+  # Comments stay quiet — they're the most common type. Questions and puzzles
+  # get pastel tints. AI responses get a butter treatment to read at a glance.
   defp type_tag_label(:question), do: "Question"
   defp type_tag_label(:puzzle), do: "Puzzle"
   defp type_tag_label(:ai_response), do: "AI"
@@ -254,15 +276,28 @@ defmodule StudysyncWeb.LibraryComponents do
 
   defp type_tag_classes(:question), do: "text-mint border-mint/60 bg-mint/15"
   defp type_tag_classes(:puzzle), do: "text-lavender border-lavender/60 bg-lavender/20"
-  defp type_tag_classes(:ai_response), do: "text-terracotta border-terracotta/40"
+  defp type_tag_classes(:ai_response), do: "text-ink border-butter/60 bg-butter/30"
   defp type_tag_classes(_), do: "text-ink-soft border-paper-2"
+
+  # Number badge background — provides immediate type recognition at the
+  # top-left corner of each card so the reader can scan the rail by type
+  # without reading the label.
+  defp type_number_badge_classes(:question), do: "bg-mint/40 text-ink border border-mint/50"
+  defp type_number_badge_classes(:puzzle), do: "bg-lavender/40 text-ink border border-lavender/50"
+
+  defp type_number_badge_classes(:ai_response),
+    do: "bg-butter/60 text-ink border border-butter/70"
+
+  defp type_number_badge_classes(_), do: "bg-peach/50 text-ink border border-peach/60"
 
   defp type_border_class(:question), do: "border-mint/70 hover:border-mint"
   defp type_border_class(:puzzle), do: "border-lavender/70 hover:border-lavender"
+  defp type_border_class(:ai_response), do: "border-butter/60 hover:border-butter"
   defp type_border_class(_), do: "border-paper-2 hover:border-terracotta/50"
 
   defp type_quote_border_class(:question), do: "border-mint/60"
   defp type_quote_border_class(:puzzle), do: "border-lavender/60"
+  defp type_quote_border_class(:ai_response), do: "border-butter/60"
   defp type_quote_border_class(_), do: "border-paper-2/70"
 
   defp initials(_, true), do: "AI"
@@ -335,7 +370,7 @@ defmodule StudysyncWeb.LibraryComponents do
       </p>
 
       <p :if={@event.snippet} class="font-serif italic text-ink text-sm mt-1 line-clamp-2">
-        “{@event.snippet}”
+        "{@event.snippet}"
       </p>
 
       <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-2 truncate">
@@ -653,14 +688,32 @@ defmodule StudysyncWeb.LibraryComponents do
   """
   attr :milestones, :list, required: true
   attr :total_readers, :integer, default: 0
+  attr :current_user_id, :any, default: nil
   attr :class, :string, default: nil
 
   def milestone_panel(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :user_completed,
+        user_stamp_count(assigns.milestones, assigns.current_user_id)
+      )
+
     ~H"""
     <section class={["border border-paper-2 bg-paper px-4 py-3", @class]}>
-      <header class="flex items-baseline justify-between mb-2">
+      <header class="flex items-baseline justify-between mb-3">
         <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
           Milestones · <span class="num">{length(@milestones)}</span>
+        </p>
+        <%!-- Completion progress — shows the reader how far along they are --%>
+        <p class={[
+          "font-mono text-[10px] uppercase tracking-widest num",
+          if(@user_completed == length(@milestones) and length(@milestones) > 0,
+            do: "text-terracotta",
+            else: "text-ink-soft"
+          )
+        ]}>
+          <span class="num">{@user_completed}</span>/<span class="num">{length(@milestones)}</span> you
         </p>
       </header>
 
@@ -668,18 +721,29 @@ defmodule StudysyncWeb.LibraryComponents do
         <li
           :for={milestone <- @milestones}
           id={"milestone-#{milestone.id}"}
-          class="border-l-2 border-terracotta/60 pl-3"
+          class={[
+            "border-l-2 pl-3 transition-colors",
+            if(user_stamped?(milestone, @current_user_id),
+              do: "border-terracotta",
+              else: "border-terracotta/40"
+            )
+          ]}
         >
-          <p class="font-serif text-ink text-sm">{milestone.label}</p>
+          <div class="flex items-baseline justify-between gap-2">
+            <p class="font-serif text-ink text-sm">{milestone.label}</p>
+            <%!-- Checkmark when this user has stamped this milestone --%>
+            <span
+              :if={user_stamped?(milestone, @current_user_id)}
+              class="font-mono text-[9px] uppercase tracking-widest text-terracotta shrink-0"
+              aria-label="You've stamped this milestone"
+            >
+              ✓
+            </span>
+          </div>
           <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-1">
             P. <span class="num">{milestone.page_number}</span>
-            <span :if={milestone_creator_email(milestone)}>
-              · {milestone_creator_email(milestone)}
-            </span>
             <span class="text-terracotta">
-              · <span class="num">{stamp_count(milestone)}</span>
-              / <span class="num">{@total_readers}</span>
-              stamped
+              · <span class="num">{stamp_count(milestone)}</span>/<span class="num">{@total_readers}</span> readers
             </span>
           </p>
         </li>
@@ -691,10 +755,71 @@ defmodule StudysyncWeb.LibraryComponents do
   defp stamp_count(%{stamp_count: n}) when is_integer(n), do: n
   defp stamp_count(_), do: 0
 
-  defp milestone_creator_email(%{created_by: %{email: email}}) when not is_nil(email),
-    do: to_string(email)
+  defp user_stamped?(%{stamps: stamps}, user_id) when is_list(stamps) and not is_nil(user_id) do
+    Enum.any?(stamps, &(&1.user_id == user_id))
+  end
 
-  defp milestone_creator_email(_), do: nil
+  defp user_stamped?(_, _), do: false
+
+  defp user_stamp_count(_milestones, nil), do: 0
+
+  defp user_stamp_count(milestones, user_id) do
+    Enum.count(milestones, &user_stamped?(&1, user_id))
+  end
+
+  @doc """
+  Reader presence cluster for the reader header (Study Room integration).
+
+  Shows the avatar cluster of who is currently reading the same resource,
+  with a "HERE NOW · N" mono-caps label. Renders nothing when no peers are
+  present so the header stays clean during solo reading.
+
+  `readers` is a list of email strings from Phoenix.Presence.
+  `current_user` is the signed-in user struct (excluded from the peer list
+  in the LiveView, shown separately with a terracotta ring).
+  """
+  attr :readers, :list, default: []
+  attr :class, :string, default: nil
+
+  def reader_presence(assigns) do
+    ~H"""
+    <div
+      :if={@readers != []}
+      class={["flex items-center gap-2", @class]}
+      aria-label={"#{length(@readers)} readers here now"}
+    >
+      <ul class="flex" role="list" aria-label="Readers here now">
+        <li
+          :for={{email, idx} <- Enum.with_index(@readers)}
+          class={[
+            "w-7 h-7 rounded-full flex items-center justify-center",
+            "font-mono text-[9px] uppercase tracking-widest",
+            "bg-paper text-ink-soft border border-paper-2",
+            "ring-1 ring-paper-2",
+            if(idx > 0, do: "-ml-2", else: "")
+          ]}
+          title={email}
+          aria-label={email}
+        >
+          {presence_initials(email)}
+        </li>
+      </ul>
+      <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft whitespace-nowrap">
+        here now · <span class="num">{length(@readers)}</span>
+      </p>
+    </div>
+    """
+  end
+
+  defp presence_initials(nil), do: "·"
+
+  defp presence_initials(email) do
+    email
+    |> String.split("@", parts: 2)
+    |> List.first()
+    |> String.slice(0, 2)
+    |> String.upcase()
+  end
 
   @doc """
   Chapter rail — left vertical column with chapter labels, mono caps.

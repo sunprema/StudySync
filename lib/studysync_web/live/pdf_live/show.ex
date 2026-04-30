@@ -48,6 +48,7 @@ defmodule StudysyncWeb.PdfLive.Show do
 
         initial_chat_messages = Chat.recent(resource.id)
         chat_here_now = chat_here_now(resource.id)
+        readers_here = readers_here_list(resource.id, actor)
 
         # Activity-feed deep links: `?annotation=<id>` focuses the annotation
         # (and snaps focal_page to its page); `?page=<n>` is a softer fallback
@@ -81,6 +82,7 @@ defmodule StudysyncWeb.PdfLive.Show do
           |> assign(:chapters, [])
           |> assign(:initial_chat_messages, initial_chat_messages)
           |> assign(:chat_here_now, chat_here_now)
+          |> assign(:readers_here, readers_here)
 
         socket =
           if initial_active_id do
@@ -141,6 +143,31 @@ defmodule StudysyncWeb.PdfLive.Show do
     resource_id |> ChatPubSub.topic() |> Presence.list() |> map_size()
   end
 
+  # Returns a list of peer email strings currently tracking presence on the
+  # resource's chat topic, excluding the current actor so they don't see
+  # themselves in the "here now" cluster.
+  defp readers_here_list(resource_id, actor) do
+    actor_id = if is_map(actor), do: Map.get(actor, :id), else: nil
+
+    resource_id
+    |> ChatPubSub.topic()
+    |> Presence.list()
+    |> Enum.flat_map(fn {user_id, %{metas: metas}} ->
+      if user_id == actor_id do
+        []
+      else
+        metas
+        |> List.first(%{})
+        |> Map.get(:email)
+        |> case do
+          nil -> []
+          "" -> []
+          email -> [to_string(email)]
+        end
+      end
+    end)
+  end
+
   def render(assigns) do
     # Derive the scoped annotation list once. The template displays counts
     # in a few places (header line, filter chip badges) and short assign
@@ -180,7 +207,10 @@ defmodule StudysyncWeb.PdfLive.Show do
             <h1 class="font-display text-3xl text-ink truncate mt-1">{@resource.title}</h1>
           </div>
 
-          <div class="flex items-center gap-3 shrink-0">
+          <div class="flex items-center gap-4 shrink-0">
+            <%!-- Peer presence cluster — ambient "who else is here" signal --%>
+            <.reader_presence readers={@readers_here} />
+
             <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft num">
               <span class="num">{@resource.page_count}</span> pages
             </p>
@@ -262,6 +292,7 @@ defmodule StudysyncWeb.PdfLive.Show do
             :if={@milestones != [] and !@milestone_form}
             milestones={@milestones}
             total_readers={@total_readers}
+            current_user_id={@current_user.id}
             class="mb-4"
           />
 
@@ -1020,13 +1051,17 @@ defmodule StudysyncWeb.PdfLive.Show do
 
     if topic == chat_topic do
       here_now = chat_here_now(socket.assigns.resource.id)
+      readers_here = readers_here_list(socket.assigns.resource.id, socket.assigns.current_user)
 
       send_update(StudysyncWeb.PdfLive.ChatPanel,
         id: @chat_panel_id,
         here_now: here_now
       )
 
-      {:noreply, assign(socket, :chat_here_now, here_now)}
+      {:noreply,
+       socket
+       |> assign(:chat_here_now, here_now)
+       |> assign(:readers_here, readers_here)}
     else
       {:noreply, socket}
     end
@@ -1166,7 +1201,7 @@ defmodule StudysyncWeb.PdfLive.Show do
       |> Enum.sort_by(& &1.inserted_at, DateTime)
       |> Enum.with_index(1)
       |> Enum.map(fn {a, idx} ->
-        %{id: a.id, number: idx, page: a.page_number, rect: a.rect}
+        %{id: a.id, number: idx, page: a.page_number, rect: a.rect, type: a.type}
       end)
     end)
   end

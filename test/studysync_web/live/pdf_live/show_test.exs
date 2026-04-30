@@ -488,7 +488,7 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
         |> element(~s(button[aria-controls="thread-#{a.id}"]))
         |> render_click()
 
-      assert collapse_html =~ "1 reply"
+      assert collapse_html =~ ~r{1</span>.*reply}s
     end
   end
 
@@ -569,7 +569,7 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
 
       patched = render(view)
 
-      assert patched =~ "1 reply"
+      assert patched =~ ~r{1</span>.*reply}s
       refute patched =~ "I think it's about memory."
 
       # When the thread is expanded, the same broadcast lands the reply body
@@ -592,7 +592,7 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
         |> element(~s(button[aria-controls="thread-#{annotation.id}"]))
         |> render_click()
 
-      assert collapsed =~ "2 replies"
+      assert collapsed =~ ~r{2</span>.*replies}s
     end
 
     test "two open readers each see the other's annotation appear", %{
@@ -1086,9 +1086,9 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
         )
 
       assert length(stamps) == 1
-      # Panel surfaces "1 / 1 stamped" once the actor's stamp lands.
+      # Panel surfaces "1/1 readers" once the actor's stamp lands.
       assert after_stamp =~
-               ~r{<span class="num">1</span>\s*/\s*<span class="num">1</span>\s*stamped}
+               ~r{<span class="num">1</span>/<span class="num">1</span>\s*readers}
     end
 
     test "non-members cannot stamp via the canvas event", %{
@@ -1165,7 +1165,7 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       patched = render(view)
 
       # Panel reflects the new stamp count without requiring the LV to act.
-      assert patched =~ ~r{<span class="num">1</span>\s*/\s*<span class="num">2</span>\s*stamped}
+      assert patched =~ ~r{<span class="num">1</span>\s*/\s*<span class="num">2</span>\s*readers}
     end
   end
 
@@ -1315,13 +1315,15 @@ defmodule StudysyncWeb.PdfLive.ShowTest do
       {:ok, _view, html} =
         conn |> sign_in(user) |> live(~p"/workspaces/#{ws.id}/library/#{r.id}")
 
-      # Both pages are now in a single list. We expect ¹ at least twice
-      # (once per page) and ² once (the second page-1 annotation).
-      assert Regex.scan(~r{<sup[^>]*>\s*1\s*</sup>}, html) |> length() >= 2
-      assert Regex.match?(~r{<sup[^>]*>\s*2\s*</sup>}, html)
-      # No ³ — global numbering would have produced one for the page-2
-      # first annotation.
-      refute Regex.match?(~r{<sup[^>]*>\s*3\s*</sup>}, html)
+      # Both pages are now in a single list. Number badges are <span> elements
+      # with the `w-5 h-5 num` classes (hierarchy pass). We expect badge "1"
+      # to appear at least twice (once per page as the first annotation) and
+      # badge "2" once (the second page-1 annotation). No "3" means page
+      # numbering resets at each page rather than counting globally.
+      badge_ones = Regex.scan(~r{<span[^>]*w-5 h-5[^>]*>\s*\n\s*1\s*\n\s*</span>}, html)
+      assert length(badge_ones) >= 2
+      assert Regex.match?(~r{<span[^>]*w-5 h-5[^>]*>\s*\n\s*2\s*\n\s*</span>}, html)
+      refute Regex.match?(~r{<span[^>]*w-5 h-5[^>]*>\s*\n\s*3\s*\n\s*</span>}, html)
     end
   end
 

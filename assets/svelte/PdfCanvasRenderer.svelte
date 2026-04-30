@@ -10,8 +10,9 @@
   // Props from LiveView:
   //   file_url             : string  — auth-gated URL the canvas fetches the PDF from
   //   total_pages          : number  — page count from the persisted resource
-  //   annotations          : array   — [{ id, number, page, rect: { x, y, width, height } }]
+  //   annotations          : array   — [{ id, number, page, rect: { x, y, width, height }, type }]
   //                                     rect coordinates are 0..1 normalized to the page
+  //                                     type ∈ "comment" | "question" | "puzzle" | "ai_response"
   //   milestone_markers    : array   — [{ id, page, position: { x, y }, label }]
   //                                     position is 0..1 normalized to the page
   //   is_admin?            : bool    — actor is an admin of the workspace; surfaces
@@ -97,10 +98,14 @@
   let hoveredAnnotationId = $state(null);
   // Marker that should briefly pulse — cleared after the animation completes.
   let pulseAnnotationId = $state(null);
+  // Milestone that was just stamped — shows a brief "Stamped!" confirmation
+  // in the popover before closing it.
+  let stampConfirmedMilestoneId = $state(null);
 
   let pdfDoc = null;
   let observer = null;
   let pulseTimer = null;
+  let stampConfirmTimer = null;
   // Render-cache for canvases. Off $state so we don't trigger Svelte
   // re-renders on every page paint.
   const renderedPages = new Set();
@@ -243,6 +248,7 @@
     if (observer) observer.disconnect();
     if (pdfDoc) pdfDoc.destroy?.();
     if (pulseTimer) clearTimeout(pulseTimer);
+    if (stampConfirmTimer) clearTimeout(stampConfirmTimer);
     if (visiblePagesDebounce) clearTimeout(visiblePagesDebounce);
   });
 
@@ -643,8 +649,15 @@
   function confirmStamp(e) {
     e?.preventDefault?.();
     if (!popoverContext || popoverContext.stampedByMe) return;
-    pushEvent("apply_stamp", { milestone_id: popoverContext.milestone.id });
-    milestonePopover = null;
+    const mid = popoverContext.milestone.id;
+    pushEvent("apply_stamp", { milestone_id: mid });
+    // Show a brief "Stamped!" confirmation in the popover, then close it.
+    stampConfirmedMilestoneId = mid;
+    if (stampConfirmTimer) clearTimeout(stampConfirmTimer);
+    stampConfirmTimer = setTimeout(() => {
+      stampConfirmedMilestoneId = null;
+      milestonePopover = null;
+    }, 700);
   }
 
   // Close the popover on Escape or when the user clicks outside it.
@@ -763,6 +776,26 @@
         bind:this={p.container}
       >
         <canvas bind:this={p.canvas} aria-label="Page {p.pageNum}"></canvas>
+
+        <!-- Highlight layer: semi-transparent tints beneath the text layer so
+             annotated text regions are discoverable without reading every marker.
+             Sits below the text layer (z-index 1) so it doesn't block selection. -->
+        <div class="highlight-layer" aria-hidden="true">
+          {#each annotationsByPage.get(p.pageNum) || [] as a (a.id)}
+            <div
+              class="annotation-highlight"
+              class:type-comment={a.type === "comment" || !a.type}
+              class:type-question={a.type === "question"}
+              class:type-puzzle={a.type === "puzzle"}
+              class:type-ai={a.type === "ai_response"}
+              style:left="{a.rect.x * 100}%"
+              style:top="{a.rect.y * 100}%"
+              style:width="{a.rect.width * 100}%"
+              style:height="{a.rect.height * 100}%"
+            ></div>
+          {/each}
+        </div>
+
         <div class="textLayer" bind:this={p.textLayer}></div>
         <div class="annotation-overlay">
           {#each annotationsByPage.get(p.pageNum) || [] as a (a.id)}
@@ -848,7 +881,10 @@
         </ul>
       {/if}
 
-      {#if popoverContext.stampedByMe}
+      {#if stampConfirmedMilestoneId === popoverContext.milestone.id}
+        <!-- Brief impact confirmation before the popover closes -->
+        <p class="popover-stamp-confirmed" aria-live="polite">Stamped.</p>
+      {:else if popoverContext.stampedByMe}
         <p class="popover-stamped">Stamped by you</p>
       {:else}
         <button
@@ -859,6 +895,15 @@
           Stamp this milestone
         </button>
       {/if}
+    </div>
+  {/if}
+
+  <!-- First-use hint: shown when no annotations exist and the PDF has loaded.
+       Fades in after a short delay so it doesn't flash during initial render. -->
+  {#if annotations.length === 0 && pages.length > 0 && !selectionMenu}
+    <div class="first-use-hint" role="note" aria-label="Getting started hint">
+      <span class="hint-icon" aria-hidden="true">↑</span>
+      <p class="hint-text">Select any text to add your first annotation</p>
     </div>
   {/if}
 
@@ -998,6 +1043,46 @@
     height: 100%;
   }
 
+  /* Highlight layer: tinted rects behind the text layer marking annotated
+     text regions. Sits at z-index 1 so the text layer (z-index 2) renders
+     on top — selection stays fully functional. pointer-events: none on all
+     children so the layer never captures clicks. */
+  .highlight-layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .annotation-highlight {
+    position: absolute;
+    pointer-events: none;
+    border-bottom: 2px solid;
+    /* Faint tint + underline — visible enough to find but not distracting */
+    opacity: 0.55;
+  }
+
+  .annotation-highlight.type-comment {
+    background: color-mix(in srgb, #f0c8a8 30%, transparent);
+    border-bottom-color: #d4a87a;
+  }
+
+  .annotation-highlight.type-question {
+    background: color-mix(in srgb, #c2dcc6 35%, transparent);
+    border-bottom-color: #85b88e;
+  }
+
+  .annotation-highlight.type-puzzle {
+    background: color-mix(in srgb, #d2c8e0 35%, transparent);
+    border-bottom-color: #a094b8;
+  }
+
+  .annotation-highlight.type-ai {
+    background: color-mix(in srgb, #ecdfa8 35%, transparent);
+    border-bottom-color: #c9b86a;
+  }
+
   /* Text layer: PDF.js positions transparent text spans over the canvas.
      Pattern adapted from pdfjs-dist/web/pdf_viewer.css. */
   .textLayer {
@@ -1008,7 +1093,7 @@
     text-align: initial;
     forced-color-adjust: none;
     transform-origin: 0 0;
-    z-index: 1;
+    z-index: 2;
   }
 
   .textLayer :global(span),
@@ -1024,16 +1109,14 @@
     background: color-mix(in srgb, var(--color-terracotta) 30%, transparent);
   }
 
-  /* Annotation markers — terracotta superscript, anchored at the end of the
-     selection's rect on each page. Clickable via Slice 5 bi-directional sync. */
+  /* Annotation markers overlay — sits above text layer (z-index 2) so markers
+     are always clickable. Overlay itself is pointer-events: none; only the
+     individual marker buttons re-enable pointer events. */
   .annotation-overlay {
     position: absolute;
     inset: 0;
-    /* Overlay itself is transparent to pointer events so the underlying text
-       layer keeps receiving selection drags; only the markers re-enable
-       pointer-events for click. */
     pointer-events: none;
-    z-index: 2;
+    z-index: 3;
   }
 
   /* Annotation markers — small yellow badge with the footnote number
@@ -1279,22 +1362,105 @@
     padding-top: 0.55rem;
   }
 
+  /* Brief "Stamped." confirmation — shown for ~700ms before the popover
+     closes. Larger text and a bounce-in animation for impact. */
+  .popover-stamp-confirmed {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--color-terracotta);
+    border-top: 1px solid var(--color-paper-2);
+    margin: 0;
+    padding-top: 0.55rem;
+    animation: stamp-confirm 0.45s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  }
+
+  @keyframes stamp-confirm {
+    0% { opacity: 0; transform: scale(0.85); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
+  /* Stamp button — larger than a typical popover action to signal this is
+     the primary affordance. Full-width so it's easy to hit. */
   .popover-stamp-btn {
     border: 1px solid var(--color-terracotta);
     background: var(--color-terracotta);
     color: var(--color-paper);
     font-family: var(--font-mono);
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.15em;
-    padding: 0.5rem 0.75rem;
+    padding: 0.65rem 0.85rem;
     cursor: pointer;
     border-radius: 2px;
-    transition: opacity 0.12s ease;
+    width: 100%;
+    text-align: center;
+    transition:
+      opacity 0.12s ease,
+      transform 0.1s ease;
   }
 
   .popover-stamp-btn:hover {
-    opacity: 0.9;
+    opacity: 0.88;
+  }
+
+  .popover-stamp-btn:active {
+    transform: scale(0.97);
+  }
+
+  /* First-use hint — a quiet, animated nudge in the scroll area when the
+     PDF has loaded but the user has no annotations yet. Fades in after a
+     short delay and pulses gently to draw the eye. */
+  .first-use-hint {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--color-paper);
+    border: 1px solid var(--color-paper-2);
+    padding: 0.55rem 1rem;
+    border-radius: 999px;
+    pointer-events: none;
+    z-index: 10;
+    animation:
+      hint-fade-in 0.6s ease 1.2s both,
+      hint-pulse 3s ease-in-out 1.8s infinite;
+    white-space: nowrap;
+  }
+
+  .hint-icon {
+    font-size: 0.85rem;
+    color: var(--color-terracotta);
+    animation: hint-bounce 1.8s ease-in-out 1.8s infinite;
+    display: inline-block;
+  }
+
+  .hint-text {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--color-ink-soft);
+    margin: 0;
+  }
+
+  @keyframes hint-fade-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+  @keyframes hint-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  @keyframes hint-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
   }
 
   .selection-menu {
