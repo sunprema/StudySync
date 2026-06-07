@@ -1,33 +1,43 @@
 <Layouts.flash_group flash={@flash} />
 
-<div class="landing-page">
+<div class="lp">
   <%!-- ───────────── NAV ───────────── --%>
-  <nav class="nav-top">
-    <a href="/" class="logo">
-      <em>Study</em><span style="font-weight:500">Sync</span><span class="dot"></span>
+  <nav class="lp-nav">
+    <a href="/" class="lp-logo">
+      <em>Study</em><span>Sync</span><span class="lp-logo-dot"></span>
     </a>
-    <div class="nav-links">
-      <a href="#how">How it works</a>
-      <a href="#features">Features</a>
-      <a href="#groups">For groups</a>
-      <a href="#pricing">Pricing</a>
+    <div class="flex gap-7 items-center">
+      <a href="#how" class="text-sm text-ink-soft hover:text-terracotta transition-colors">
+        How it works
+      </a>
+      <a href="#features" class="text-sm text-ink-soft hover:text-terracotta transition-colors">
+        Features
+      </a>
+      <a href="#groups" class="text-sm text-ink-soft hover:text-terracotta transition-colors">
+        For groups
+      </a>
+      <a href="#pricing" class="text-sm text-ink-soft hover:text-terracotta transition-colors">
+        Pricing
+      </a>
     </div>
-    <div class="nav-cta">
+    <div class="ml-auto flex items-center gap-2">
       <%= if @current_user do %>
-        <a href={~p"/workspaces"} class="lp-btn-ghost">Workspaces</a>
-        <div class="nav-user">
+        <a href={~p"/workspaces"} class="btn btn-ghost btn-sm">Workspaces</a>
+        <div class="flex items-center gap-2">
           <span
-            class="av nav-avatar"
+            class="lp-avatar"
             title={to_string(@current_user.email)}
             aria-label={"Signed in as #{@current_user.email}"}
           >
             {initials(@current_user)}
           </span>
-          <.link href={~p"/sign-out"} method="delete" class="lp-btn-ghost">Sign out</.link>
+          <.link href={~p"/sign-out"} method="delete" class="btn btn-ghost btn-sm">
+            Sign out
+          </.link>
         </div>
       <% else %>
-        <a href={~p"/sign-in"} class="lp-btn-ghost">Sign in</a>
-        <a href={~p"/register"} class="lp-btn">Start a group →</a>
+        <a href={~p"/sign-in"} class="btn btn-ghost btn-sm">Sign in</a>
+        <a href={~p"/register"} class="btn btn-primary btn-sm">Start a group →</a>
       <% end %>
     </div>
   </nav>
@@ -35,77 +45,86 @@
   <%!-- ───────────── HERO ───────────── --%>
   <header class="lp-hero">
     <div>
-      <div class="hero-eyebrow">
-        <span class="pill">NEW · OPEN BETA</span>
-        <span>Reading groups for textbooks, papers, and books</span>
+      <div class="flex items-center gap-3 mb-6">
+        <span class="pill accent">NEW · OPEN BETA</span>
+        <span class="mono-tag">Reading groups for textbooks, papers, and books</span>
       </div>
-      <h1>
+      <h1 class="lp-h1">
         Read together.<br />
         <em>Finish</em> together.
       </h1>
-      <p class="lede">
+      <p class="lp-lede">
         StudySync turns any PDF into a shared reading room. See where your friends are, leave notes in the margin, and study side-by-side — even when you're miles apart.
       </p>
-      <div class="hero-ctas">
-        <a href={~p"/register"} class="lp-btn lg">Start a study group</a>
-        <a href="#how" class="lp-btn lg outline">See how it works</a>
-        <span class="meta">Free for groups up to 6</span>
+      <div class="flex gap-3 items-center flex-wrap mt-8">
+        <a href={~p"/register"} class="btn btn-primary">Start a study group</a>
+        <a href="#how" class="btn btn-outline">See how it works</a>
+        <span class="mono-tag ml-2">Free for groups up to 6</span>
       </div>
     </div>
 
     <%!-- Side: textbook page mock with margin notes --%>
-    <div class="hero-page-wrap">
-      <div class="hero-page">
-        <div class="hero-page-header">
+    <div class="lp-page-wrap">
+      <div class="lp-page">
+        <div class="lp-page-header">
           <span>PT I · TWO SYSTEMS</span>
           <span>4 · THE ASSOCIATIVE MACHINE</span>
           <span>p. 19</span>
         </div>
         <p>To observe your mind in automatic mode, glance at the image below.</p>
-        <div class="hero-page-figure">FIG 4.1 · ANGRY WOMAN</div>
+        <div class="lp-page-figure">FIG 4.1 · ANGRY WOMAN</div>
         <p>
-          Your experience as you look at the woman's face seamlessly combines what we normally call seeing and intuitive thinking. As surely as you saw her hair is dark, you knew she is <span class="hi-1">angry<sup>1</sup></span>. A premonition came to mind automatically and effortlessly. It just happened. It was an instance of <span class="hi-2">fast thinking<sup>2</sup></span>.
+          Your experience as you look at the woman's face seamlessly combines what we normally call seeing and intuitive thinking. As surely as you saw her hair is dark, you knew she is <span class="lp-hi-1">angry<sup>1</sup></span>. A premonition came to mind automatically and effortlessly. It just happened. It was an instance of <span class="lp-hi-2">fast thinking<sup>2</sup></span>.
         </p>
 
-        <div class="margin-note" style="top: 130px;">
-          <div class="mn-head">
-            <span class="av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
+        <div class="lp-mn" style="top: 130px;">
+          <div class="lp-mn-head">
+            <span class="lp-av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
               SO
             </span>
-            <span style="font-weight:600; font-size:12px;">Sara</span>
-            <span class="mn-time">12m</span>
+            <span class="font-semibold text-xs">Sara</span>
+            <span class="lp-mn-time">12m</span>
           </div>
-          <div class="mn-text">
-            <span class="mn-mention">@maya</span>
+          <div class="lp-mn-text">
+            <span class="lp-mention">@maya</span>
             is this the Müller-Lyer setup? feels like System 1 prep
           </div>
         </div>
 
-        <div class="margin-note m2" style="top: 200px;">
-          <div class="mn-head">
-            <span class="av" style="background:oklch(0.78 0.10 168); color:oklch(0.32 0.09 168);">
+        <div class="lp-mn lp-mn-left" style="top: 200px;">
+          <div class="lp-mn-head">
+            <span
+              class="lp-av"
+              style="background:oklch(0.78 0.10 168); color:oklch(0.32 0.09 168);"
+            >
               JP
             </span>
-            <span style="font-weight:600; font-size:12px;">Jules</span>
-            <span class="mn-time">34m</span>
+            <span class="font-semibold text-xs">Jules</span>
+            <span class="lp-mn-time">34m</span>
           </div>
-          <div class="mn-text">love this framing — "feel of something you did" is wild</div>
+          <div class="lp-mn-text">love this framing — "feel of something you did" is wild</div>
         </div>
 
-        <div class="presence-strip">
-          <span class="live-dot"></span>
+        <div class="lp-presence">
+          <span class="lp-live-dot"></span>
           <span>READING NOW</span>
-          <div class="stack-avs">
-            <span class="av" style="background:oklch(0.78 0.10 32); color:oklch(0.32 0.09 32);">
+          <div class="lp-stack-avs">
+            <span class="lp-av" style="background:oklch(0.78 0.10 32); color:oklch(0.32 0.09 32);">
               MC
             </span>
-            <span class="av" style="background:oklch(0.78 0.10 168); color:oklch(0.32 0.09 168);">
+            <span
+              class="lp-av"
+              style="background:oklch(0.78 0.10 168); color:oklch(0.32 0.09 168);"
+            >
               JP
             </span>
-            <span class="av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
+            <span class="lp-av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
               SO
             </span>
-            <span class="av" style="background:oklch(0.78 0.10 110); color:oklch(0.32 0.09 110);">
+            <span
+              class="lp-av"
+              style="background:oklch(0.78 0.10 110); color:oklch(0.32 0.09 110);"
+            >
               MB
             </span>
           </div>
@@ -116,37 +135,37 @@
 
   <%!-- ───────────── HOW IT WORKS ───────────── --%>
   <section id="how" class="lp-section">
-    <div class="section-eyebrow">
-      <span class="num">01</span>
+    <div class="lp-eyebrow">
+      <span class="text-terracotta font-bold font-mono">01</span>
       <span>How it works</span>
-      <span class="rule"></span>
+      <span class="lp-rule"></span>
     </div>
-    <h2 class="display">Four steps from <em>"let's read together"</em> to actually doing it.</h2>
+    <h2 class="lp-h2">Four steps from <em>"let's read together"</em> to actually doing it.</h2>
 
     <div class="lp-steps">
       <div class="lp-step">
-        <div class="step-n">i.</div>
+        <div class="lp-step-n">i.</div>
         <h3>Upload a PDF</h3>
         <p>
           Drop in a textbook chapter, a paper, lecture slides — anything you'd read alone. StudySync indexes the pages.
         </p>
       </div>
       <div class="lp-step">
-        <div class="step-n">ii.</div>
+        <div class="lp-step-n">ii.</div>
         <h3>Invite your group</h3>
         <p>
           One link. Up to six readers per group. Everyone sees the same pages and the same margin.
         </p>
       </div>
       <div class="lp-step">
-        <div class="step-n">iii.</div>
+        <div class="lp-step-n">iii.</div>
         <h3>Read & annotate</h3>
         <p>
           Highlight passages. Leave notes in the margin. Tag friends with @ — they'll see it on their next session.
         </p>
       </div>
       <div class="lp-step">
-        <div class="step-n">iv.</div>
+        <div class="lp-step-n">iv.</div>
         <h3>Open a study room</h3>
         <p>
           When it's time to focus, open a virtual room. Synced scrolling, shared whiteboard, gentle presence.
@@ -157,328 +176,346 @@
 
   <%!-- ───────────── FEATURES ───────────── --%>
   <section id="features" class="lp-section">
-    <div class="section-eyebrow">
-      <span class="num">02</span>
+    <div class="lp-eyebrow">
+      <span class="text-terracotta font-bold font-mono">02</span>
       <span>What's inside</span>
-      <span class="rule"></span>
+      <span class="lp-rule"></span>
     </div>
-    <h2 class="display">A reading app that <em>respects</em> the page.</h2>
-    <p class="section-lede">
+    <h2 class="lp-h2">A reading app that <em>respects</em> the page.</h2>
+    <p class="lp-section-lede">
       Every detail of StudySync is built for slow, deliberate study — not infinite scroll. Notes live where they belong: in the margin.
     </p>
 
     <%!-- Feature 1: Margin annotations --%>
-    <div class="feature">
+    <div class="lp-feature">
       <div>
-        <h3>Annotations <em>in the margin</em>, where they belong.</h3>
-        <p>
+        <h3 class="lp-feature-h">Annotations <em>in the margin</em>, where they belong.</h3>
+        <p class="lp-feature-p">
           Highlight a passage, type a note, and it lands beside the page — not buried in a comment thread. Footnote markers tie each note to the exact words. Tag a friend with @ and they'll find it next time they open the chapter.
         </p>
-        <ul>
-          <li><span class="bullet">01</span>Highlights with footnote anchors</li>
-          <li><span class="bullet">02</span>@mentions trigger gentle notifications</li>
-          <li><span class="bullet">03</span>Threaded replies under each note</li>
-          <li><span class="bullet">04</span>Filter the margin: yours, friends', everyone</li>
+        <ul class="lp-feature-list">
+          <li><span class="lp-bullet">01</span>Highlights with footnote anchors</li>
+          <li><span class="lp-bullet">02</span>@mentions trigger gentle notifications</li>
+          <li><span class="lp-bullet">03</span>Threaded replies under each note</li>
+          <li><span class="lp-bullet">04</span>Filter the margin: yours, friends', everyone</li>
         </ul>
       </div>
 
-      <div class="visual">
-        <div class="v-head"><span>PART I · TWO SYSTEMS</span><span>p. 19</span></div>
+      <div class="lp-visual">
+        <div class="lp-visual-header"><span>PART I · TWO SYSTEMS</span><span>p. 19</span></div>
         <p>
-          As surely and quickly as you saw the woman's hair is dark, you knew she is <span class="hi-1">angry<sup>1</sup></span>. A premonition came to mind automatically.
+          As surely and quickly as you saw the woman's hair is dark, you knew she is <span class="lp-hi-1">angry<sup>1</sup></span>. A premonition came to mind automatically.
         </p>
         <p>
-          It just happened to you. It was an instance of <span class="hi-2">fast thinking<sup>2</sup></span>.
+          It just happened to you. It was an instance of <span class="lp-hi-2">fast thinking<sup>2</sup></span>.
         </p>
 
-        <div class="v-note">
-          <div class="v-note-head">
-            <span class="av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
+        <div class="lp-vnote">
+          <div class="lp-vnote-head">
+            <span class="lp-av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
               SO
             </span>
-            <span style="font-weight:600">Sara</span>
-            <span class="vn-when">12m</span>
-            <span class="vn-anchor">¹ ON "ANGRY"</span>
+            <span class="font-semibold text-sm">Sara</span>
+            <span class="lp-vn-when">12m</span>
+            <span class="lp-vn-anchor">¹ ON "ANGRY"</span>
           </div>
-          <div class="v-note-body">
-            <span class="mn-mention">@maya</span>
+          <div class="lp-vnote-body">
+            <span class="lp-mention">@maya</span>
             is this the Müller-Lyer setup? feels like System 1 prep
           </div>
         </div>
-        <div class="v-note muted">
-          <div class="v-note-head">
+        <div class="lp-vnote lp-vnote-muted">
+          <div class="lp-vnote-head">
             <span
-              class="av"
+              class="lp-av"
               style="background:oklch(0.78 0.10 168); color:oklch(0.32 0.09 168); width:18px; height:18px; font-size:9px;"
             >
               JP
             </span>
-            <span style="font-weight:600">Jules</span>
-            <span class="vn-when" style="font-size:9px;">34m</span>
+            <span class="font-semibold text-sm">Jules</span>
+            <span class="lp-vn-when">34m</span>
           </div>
         </div>
       </div>
     </div>
 
     <%!-- Feature 2: Progress --%>
-    <div class="feature flip">
+    <div class="lp-feature lp-feature-flip">
       <div>
-        <h3>See the group's <em>progress</em>, at a glance.</h3>
-        <p>
+        <h3 class="lp-feature-h">See the group's <em>progress</em>, at a glance.</h3>
+        <p class="lp-feature-p">
           Your reading group's whole journey on a single spine. Avatars sit on the page they're on. The current chapter is marked. Time spent, percentage read, who finished what — it's all there, and it updates the second they turn a page.
         </p>
-        <ul>
-          <li><span class="bullet">01</span>% of pages read per person</li>
-          <li><span class="bullet">02</span>Time studied, this week and lifetime</li>
-          <li><span class="bullet">03</span>Chapter milestones in the activity feed</li>
+        <ul class="lp-feature-list">
+          <li><span class="lp-bullet">01</span>% of pages read per person</li>
+          <li><span class="lp-bullet">02</span>Time studied, this week and lifetime</li>
+          <li><span class="lp-bullet">03</span>Chapter milestones in the activity feed</li>
           <li>
-            <span class="bullet">04</span>Quiet "still reading" presence — no streaks, no shame
+            <span class="lp-bullet">04</span>Quiet "still reading" presence — no streaks, no shame
           </li>
         </ul>
       </div>
 
-      <div class="progress-visual">
-        <div class="pv-head">
-          <span class="pv-title">Group is on Chapter 4</span>
-          <span class="pv-meta">62% AVG · 21H 19M</span>
+      <div class="lp-progress-visual">
+        <div class="lp-pv-head">
+          <span class="lp-pv-title">Group is on Chapter 4</span>
+          <span class="mono-tag">62% AVG · 21H 19M</span>
         </div>
-        <div class="pv-spine">
-          <div class="tick major" style="left:0;"></div>
-          <div class="tick" style="left:10%;"></div>
-          <div class="tick" style="left:20%;"></div>
-          <div class="tick major" style="left:25%;"></div>
-          <div class="tick" style="left:35%;"></div>
-          <div class="tick" style="left:45%;"></div>
-          <div class="tick major" style="left:50%;"></div>
-          <div class="tick" style="left:60%;"></div>
-          <div class="tick" style="left:70%;"></div>
-          <div class="tick major" style="left:75%;"></div>
-          <div class="tick" style="left:85%;"></div>
-          <div class="tick" style="left:95%;"></div>
+        <div class="lp-pv-spine">
+          <div class="lp-tick lp-tick-major" style="left:0;"></div>
+          <div class="lp-tick" style="left:10%;"></div>
+          <div class="lp-tick" style="left:20%;"></div>
+          <div class="lp-tick lp-tick-major" style="left:25%;"></div>
+          <div class="lp-tick" style="left:35%;"></div>
+          <div class="lp-tick" style="left:45%;"></div>
+          <div class="lp-tick lp-tick-major" style="left:50%;"></div>
+          <div class="lp-tick" style="left:60%;"></div>
+          <div class="lp-tick" style="left:70%;"></div>
+          <div class="lp-tick lp-tick-major" style="left:75%;"></div>
+          <div class="lp-tick" style="left:85%;"></div>
+          <div class="lp-tick" style="left:95%;"></div>
 
-          <div class="pv-dot" style="left:78%; top: 30%;">
-            <span class="av" style="background:oklch(0.78 0.10 32); color:oklch(0.32 0.09 32);">
+          <div class="lp-pv-dot" style="left:78%; top: 30%;">
+            <span class="lp-av" style="background:oklch(0.78 0.10 32); color:oklch(0.32 0.09 32);">
               MC
             </span>
           </div>
-          <div class="pv-dot" style="left:64%; top: 65%;">
-            <span class="av" style="background:oklch(0.78 0.10 168); color:oklch(0.32 0.09 168);">
+          <div class="lp-pv-dot" style="left:64%; top: 65%;">
+            <span
+              class="lp-av"
+              style="background:oklch(0.78 0.10 168); color:oklch(0.32 0.09 168);"
+            >
               JP
             </span>
           </div>
-          <div class="pv-dot" style="left:52%; top: 30%;">
-            <span class="av" style="background:oklch(0.78 0.10 220); color:oklch(0.32 0.09 220);">
+          <div class="lp-pv-dot" style="left:52%; top: 30%;">
+            <span
+              class="lp-av"
+              style="background:oklch(0.78 0.10 220); color:oklch(0.32 0.09 220);"
+            >
               TA
             </span>
           </div>
-          <div class="pv-dot" style="left:91%; top: 65%;">
-            <span class="av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
+          <div class="lp-pv-dot" style="left:91%; top: 65%;">
+            <span class="lp-av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
               SO
             </span>
           </div>
-          <div class="pv-dot" style="left:38%; top: 50%;">
-            <span class="av" style="background:oklch(0.78 0.10 280); color:oklch(0.32 0.09 280);">
+          <div class="lp-pv-dot" style="left:38%; top: 50%;">
+            <span
+              class="lp-av"
+              style="background:oklch(0.78 0.10 280); color:oklch(0.32 0.09 280);"
+            >
               RT
             </span>
           </div>
-          <div class="pv-dot" style="left:71%; top: 50%;">
-            <span class="av" style="background:oklch(0.78 0.10 110); color:oklch(0.32 0.09 110);">
+          <div class="lp-pv-dot" style="left:71%; top: 50%;">
+            <span
+              class="lp-av"
+              style="background:oklch(0.78 0.10 110); color:oklch(0.32 0.09 110);"
+            >
               MB
             </span>
           </div>
 
-          <div class="marker" style="left:62%;"></div>
-          <div class="marker-label" style="left:62%;">CH 4 ↓</div>
+          <div class="lp-marker" style="left:62%;"></div>
+          <div class="lp-marker-label" style="left:62%;">CH 4 ↓</div>
         </div>
-        <div class="pv-axis">
-          <span>PART I</span>
-          <span>PART II</span>
-          <span>PART III</span>
-          <span>PART IV</span>
-          <span>PART V</span>
+        <div class="lp-pv-axis">
+          <span>PART I</span><span>PART II</span><span>PART III</span><span>PART IV</span><span>PART V</span>
         </div>
 
-        <div class="pv-rows">
-          <div class="pv-row">
-            <span class="av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
+        <div class="lp-pv-rows">
+          <div class="lp-pv-row">
+            <span class="lp-av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
               SO
             </span>
-            <span class="name">Sara</span>
-            <span class="bar">
+            <span class="lp-pv-name">Sara</span>
+            <span class="lp-pv-bar">
               <div style="width:91%"></div>
             </span>
-            <span class="pct">91%</span>
+            <span class="lp-pv-pct">91%</span>
           </div>
-          <div class="pv-row">
-            <span class="av" style="background:oklch(0.78 0.10 32); color:oklch(0.32 0.09 32);">
+          <div class="lp-pv-row">
+            <span class="lp-av" style="background:oklch(0.78 0.10 32); color:oklch(0.32 0.09 32);">
               MC
             </span>
-            <span class="name">Maya</span>
-            <span class="bar">
+            <span class="lp-pv-name">Maya</span>
+            <span class="lp-pv-bar">
               <div style="width:78%"></div>
             </span>
-            <span class="pct">78%</span>
+            <span class="lp-pv-pct">78%</span>
           </div>
-          <div class="pv-row">
-            <span class="av" style="background:oklch(0.78 0.10 110); color:oklch(0.32 0.09 110);">
+          <div class="lp-pv-row">
+            <span
+              class="lp-av"
+              style="background:oklch(0.78 0.10 110); color:oklch(0.32 0.09 110);"
+            >
               MB
             </span>
-            <span class="name">Milo</span>
-            <span class="bar">
+            <span class="lp-pv-name">Milo</span>
+            <span class="lp-pv-bar">
               <div style="width:71%"></div>
             </span>
-            <span class="pct">71%</span>
+            <span class="lp-pv-pct">71%</span>
           </div>
         </div>
       </div>
     </div>
 
     <%!-- Feature 3: Study room --%>
-    <div class="feature" id="groups">
+    <div class="lp-feature" id="groups">
       <div>
-        <h3>A <em>quiet</em> place to study, together.</h3>
-        <p>
+        <h3 class="lp-feature-h">A <em>quiet</em> place to study, together.</h3>
+        <p class="lp-feature-p">
           Open a virtual room when it's time to focus. No video. No chat. Just the page everyone's on, a shared whiteboard for working things out, and the soft awareness that your friends are reading next to you.
         </p>
-        <ul>
+        <ul class="lp-feature-list">
           <li>
-            <span class="bullet">01</span>Synced scrolling — follow the host or read at your own pace
+            <span class="lp-bullet">01</span>Synced scrolling — follow the host or read at your own pace
           </li>
-          <li><span class="bullet">02</span>Shared whiteboard for diagrams & open questions</li>
-          <li><span class="bullet">03</span>Pomodoro timer built in</li>
-          <li><span class="bullet">04</span>Presence indicators only — focus mode by default</li>
+          <li>
+            <span class="lp-bullet">02</span>Shared whiteboard for diagrams & open questions
+          </li>
+          <li><span class="lp-bullet">03</span>Pomodoro timer built in</li>
+          <li>
+            <span class="lp-bullet">04</span>Presence indicators only — focus mode by default
+          </li>
         </ul>
       </div>
 
-      <div class="room-visual">
-        <div class="rv-head">
-          <span class="rv-title">Quiet hours</span>
-          <span class="rv-live">● LIVE · 47m</span>
+      <div class="lp-room-visual">
+        <div class="lp-rv-head">
+          <span class="lp-rv-title">Quiet hours</span>
+          <span class="mono-tag text-terracotta">● LIVE · 47m</span>
         </div>
-        <div class="rv-board">
+        <div class="lp-rv-board">
           <div
-            class="sticky-note"
-            style="top:14px; left:14px; background: oklch(0.93 0.06 80); transform: rotate(-2deg);"
+            class="lp-sticky"
+            style="top:14px; left:14px; background: oklch(0.93 0.04 200); transform: rotate(-2deg);"
           >
             System 1 = automatic, fast, no effort
-            <div class="by">— sara</div>
+            <div class="lp-sticky-by">— sara</div>
           </div>
           <div
-            class="sticky-note"
-            style="top:30px; right:14px; background: var(--accent-soft); transform: rotate(1.5deg);"
+            class="lp-sticky"
+            style="top:30px; right:14px; background: var(--ds-accent-tint); transform: rotate(1.5deg);"
           >
             "premonition" — anticipation as part of perception
-            <div class="by">— jules</div>
+            <div class="lp-sticky-by">— jules</div>
           </div>
           <div
-            class="sticky-note"
-            style="bottom:18px; left:30px; background: oklch(0.92 0.05 168); transform: rotate(-1deg);"
+            class="lp-sticky"
+            style="bottom:18px; left:30px; background: oklch(0.93 0.04 185); transform: rotate(-1deg);"
           >
             17 × 24 → System 2 kicks in. why?
-            <div class="by">— milo</div>
+            <div class="lp-sticky-by">— milo</div>
           </div>
-          <div class="rv-cursor" style="top: 130px; left: 200px;">
+          <div class="lp-rv-cursor" style="top: 130px; left: 200px;">
             <svg width="14" height="14" viewBox="0 0 14 14">
               <path
                 d="M2 2 L12 8 L7 9 L5 13 Z"
-                fill="var(--accent)"
-                stroke="var(--paper)"
+                fill="var(--ds-accent)"
+                stroke="var(--ds-surface)"
                 stroke-width="1"
               />
             </svg>
-            <span class="label" style="background: var(--accent-soft); color: var(--accent-deep);">
-              sara
-            </span>
+            <span class="lp-rv-label">sara</span>
           </div>
         </div>
-        <div class="rv-foot">
-          <span class="pomo">22:14</span>
-          <span class="timer-bar"><span></span></span>
-          <span>DEEP READ · 25m</span>
+        <div class="lp-rv-foot">
+          <span class="lp-pomo">22:14</span>
+          <span class="lp-timer-bar"><span></span></span>
+          <span class="mono-tag">DEEP READ · 25m</span>
         </div>
       </div>
     </div>
   </section>
 
   <%!-- ───────────── QUOTES ───────────── --%>
-  <div class="quotes-band">
-    <div class="section-eyebrow" style="max-width:1280px; margin:0 auto 36px; padding: 0;">
-      <span class="num">03</span>
-      <span>From the open beta</span>
-      <span class="rule"></span>
-    </div>
-    <div class="quotes-band-inner">
-      <div class="quote">
-        <q>
-          I finally finished a textbook. Like, the whole thing. Knowing my friends were a chapter behind kept me honest.
-        </q>
-        <div class="who">
-          <span class="av" style="background:oklch(0.78 0.10 32); color:oklch(0.32 0.09 32);">
-            MC
-          </span>
-          <span>
-            <div class="who-name">Maya, 2nd year medicine</div>
-            <div class="who-meta">COGNITION READING GROUP · 6 READERS</div>
-          </span>
-        </div>
+  <div class="lp-quotes">
+    <div class="lp-section-inner">
+      <div class="lp-eyebrow">
+        <span class="text-terracotta font-bold font-mono">03</span>
+        <span>From the open beta</span>
+        <span class="lp-rule"></span>
       </div>
-      <div class="quote">
-        <q>
-          The margin is the whole product. It's where the actual studying happens — not in some sidebar comment.
-        </q>
-        <div class="who">
-          <span class="av" style="background:oklch(0.78 0.10 168); color:oklch(0.32 0.09 168);">
-            JP
-          </span>
-          <span>
-            <div class="who-name">Jules, philosophy PhD</div>
-            <div class="who-meta">PHENOMENOLOGY SEMINAR · 4 READERS</div>
-          </span>
+      <div class="lp-quotes-grid">
+        <div class="lp-quote">
+          <q>
+            I finally finished a textbook. Like, the whole thing. Knowing my friends were a chapter behind kept me honest.
+          </q>
+          <div class="lp-who">
+            <span class="lp-av" style="background:oklch(0.78 0.10 32); color:oklch(0.32 0.09 32);">
+              MC
+            </span>
+            <span>
+              <div class="lp-who-name">Maya, 2nd year medicine</div>
+              <div class="mono-tag">COGNITION READING GROUP · 6 READERS</div>
+            </span>
+          </div>
         </div>
-      </div>
-      <div class="quote">
-        <q>
-          Our book club moved here from group chat and never looked back. The study rooms feel like a coffee shop.
-        </q>
-        <div class="who">
-          <span class="av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
-            SO
-          </span>
-          <span>
-            <div class="who-name">Sara, software engineer</div>
-            <div class="who-meta">KAHNEMAN BOOK CLUB · 5 READERS</div>
-          </span>
+        <div class="lp-quote">
+          <q>
+            The margin is the whole product. It's where the actual studying happens — not in some sidebar comment.
+          </q>
+          <div class="lp-who">
+            <span
+              class="lp-av"
+              style="background:oklch(0.78 0.10 168); color:oklch(0.32 0.09 168);"
+            >
+              JP
+            </span>
+            <span>
+              <div class="lp-who-name">Jules, philosophy PhD</div>
+              <div class="mono-tag">PHENOMENOLOGY SEMINAR · 4 READERS</div>
+            </span>
+          </div>
+        </div>
+        <div class="lp-quote">
+          <q>
+            Our book club moved here from group chat and never looked back. The study rooms feel like a coffee shop.
+          </q>
+          <div class="lp-who">
+            <span class="lp-av" style="background:oklch(0.78 0.10 12); color:oklch(0.32 0.09 12);">
+              SO
+            </span>
+            <span>
+              <div class="lp-who-name">Sara, software engineer</div>
+              <div class="mono-tag">KAHNEMAN BOOK CLUB · 5 READERS</div>
+            </span>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <%!-- ───────────── CTA ───────────── --%>
-  <div class="cta-band" id="pricing">
-    <h2>Bring your <em>group</em>.<br />Bring a <em>book</em>.</h2>
-    <p>
+  <div class="lp-cta" id="pricing">
+    <h2 class="lp-cta-h">Bring your <em>group</em>.<br />Bring a <em>book</em>.</h2>
+    <p class="lp-cta-p">
       Free for the first six readers per group. No credit card to start. Works in any modern browser.
     </p>
-    <form class="signup" action={~p"/register"} method="get">
+    <form class="lp-signup" action={~p"/register"} method="get">
       <input type="email" name="email" placeholder="you@university.edu" required />
-      <button class="lp-btn" type="submit">Start a group</button>
+      <button class="btn btn-primary" type="submit">Start a group</button>
     </form>
-    <div class="meta">SUN · APR 27, 2026 · 4 NEW GROUPS STARTED THIS HOUR</div>
+    <div class="mono-tag mt-5">SUN · APR 27, 2026 · 4 NEW GROUPS STARTED THIS HOUR</div>
   </div>
 
   <%!-- ───────────── FOOTER ───────────── --%>
   <footer class="lp-footer">
     <div>
-      <a href="/" class="logo" style="font-size: 22px;">
-        <em>Study</em><span style="font-weight:500">Sync</span><span class="dot"></span>
+      <a href="/" class="lp-logo" style="font-size: 22px;">
+        <em>Study</em><span>Sync</span><span class="lp-logo-dot"></span>
       </a>
-      <p class="colophon">
+      <p class="lp-colophon">
         A quieter way to read together. Built for students, book clubs, and reading groups who like the feel of paper but live online.
       </p>
     </div>
     <div>
-      <h4>Product</h4>
-      <ul>
+      <h4 class="lp-footer-heading">Product</h4>
+      <ul class="lp-footer-list">
         <li><a href="#features">Features</a></li>
         <li><a href="#">Roadmap</a></li>
         <li><a href="#">Changelog</a></li>
@@ -486,8 +523,8 @@
       </ul>
     </div>
     <div>
-      <h4>For</h4>
-      <ul>
+      <h4 class="lp-footer-heading">For</h4>
+      <ul class="lp-footer-list">
         <li><a href="#">Universities</a></li>
         <li><a href="#">Book clubs</a></li>
         <li><a href="#">Research labs</a></li>
@@ -495,15 +532,15 @@
       </ul>
     </div>
     <div>
-      <h4>Company</h4>
-      <ul>
+      <h4 class="lp-footer-heading">Company</h4>
+      <ul class="lp-footer-list">
         <li><a href="#">About</a></li>
         <li><a href="#">Press kit</a></li>
         <li><a href="#">Privacy</a></li>
         <li><a href="#">Terms</a></li>
       </ul>
     </div>
-    <div class="footnote">
+    <div class="lp-footnote">
       <span>© 2026 STUDYSYNC · MADE FOR SLOW READING</span>
       <span>v0.4.2 · OPEN BETA</span>
     </div>

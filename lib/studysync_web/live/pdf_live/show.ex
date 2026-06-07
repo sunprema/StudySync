@@ -280,7 +280,8 @@ defmodule StudysyncWeb.PdfLive.Show do
                 current_user_id: @current_user.id,
                 total_readers: @total_readers,
                 active_annotation_id: @active_annotation_id,
-                page_readers: svelte_page_readers(@page_readers)
+                page_readers: svelte_page_readers(@page_readers),
+                export_url: ~p"/resources/#{@resource.id}/journal.pdf"
               }
             }
             socket={@socket}
@@ -930,12 +931,14 @@ defmodule StudysyncWeb.PdfLive.Show do
     else
       actor = socket.assigns.current_user
       resource_id = socket.assigns.resource.id
+
       Phoenix.PubSub.broadcast_from!(
         Studysync.PubSub,
         self(),
         AnnotationsPubSub.topic(resource_id),
         {:reader_page, actor.id, to_string(actor.email), new_focal}
       )
+
       {:noreply, assign(socket, :focal_page, new_focal)}
     end
   end

@@ -69,6 +69,7 @@
     total_readers = 0,
     active_annotation_id = null,
     page_readers = [],       // [{ page, count, emails }] — other readers' positions
+    export_url = null,       // URL for the journal PDF download
   } = $props();
 
   const { pushEvent } = useLiveSvelte();
@@ -121,6 +122,11 @@
   let annotationMatchIndex = $state(0); // notes mode index
   let isSearching = $state(false);
   let searchInputEl = $state(null);
+
+  // Polish: scroll-snap page transitions (toggleable)
+  let snapMode = $state(false);
+  // Polish: keyboard shortcut cheatsheet modal
+  let showShortcuts = $state(false);
 
   // Reading timer — tracks active reading time, resets on 90s inactivity.
   let readingSeconds = $state(0);
@@ -581,6 +587,7 @@
 
       if (e.key === "Escape") {
         let consumed = false;
+        if (showShortcuts) { showShortcuts = false; consumed = true; }
         if (showSearch) { closeSearch(); consumed = true; }
         if (milestonePopover) { closeMilestonePopover(); consumed = true; }
         if (selectionMenu) {
@@ -594,6 +601,9 @@
 
       if (editable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      // ? — keyboard shortcut cheatsheet
+      if (e.key === "?") { e.preventDefault(); showShortcuts = !showShortcuts; return; }
 
       // Selection menu: pick annotation type by letter.
       if (selectionMenu) {
@@ -1092,6 +1102,7 @@
   class:width-wide={widthMode === "wide"}
   class:mode-sepia={viewMode === "sepia"}
   class:mode-night={viewMode === "night"}
+  class:snap-mode={snapMode}
   data-testid="pdf-canvas-root"
 >
   <header class="indicator">
@@ -1174,6 +1185,39 @@
       disabled={zoomPct >= ZOOM_MAX}
     >
       +
+    </button>
+
+    <span class="sep">·</span>
+
+    <button
+      class="indicator-btn"
+      class:is-active={snapMode}
+      onclick={() => (snapMode = !snapMode)}
+      title="Snap page transitions (toggle)"
+      aria-label="Toggle page snap"
+    >
+      SNAP
+    </button>
+
+    {#if export_url}
+      <a
+        href={export_url}
+        download
+        class="indicator-btn export-link"
+        title="Download annotated journal PDF"
+        aria-label="Export journal PDF"
+      >
+        ⇓
+      </a>
+    {/if}
+
+    <button
+      class="indicator-btn"
+      onclick={() => (showShortcuts = !showShortcuts)}
+      title="Keyboard shortcuts (?)"
+      aria-label="Show keyboard shortcuts"
+    >
+      ?
     </button>
   </header>
 
@@ -1496,6 +1540,84 @@
           <span>+ Place milestone</span><kbd>M</kbd>
         </button>
       {/if}
+    </div>
+  {/if}
+
+  {#if showShortcuts}
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div
+      class="shortcuts-backdrop"
+      onclick={(e) => { if (e.target === e.currentTarget) showShortcuts = false; }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+    >
+      <div class="shortcuts-modal">
+        <div class="shortcuts-header">
+          <span class="shortcuts-title">Keyboard Shortcuts</span>
+          <button
+            class="shortcuts-close"
+            onclick={() => (showShortcuts = false)}
+            aria-label="Close shortcuts"
+          >×</button>
+        </div>
+
+        <div class="shortcuts-groups">
+          <section class="shortcuts-group">
+            <h3 class="shortcuts-group-label">Navigation</h3>
+            <ul class="shortcuts-list">
+              <li><kbd>J</kbd><span class="shortcut-sep">/</span><kbd>↓</kbd><span class="shortcut-desc">Next page</span></li>
+              <li><kbd>K</kbd><span class="shortcut-sep">/</span><kbd>↑</kbd><span class="shortcut-desc">Previous page</span></li>
+              <li><kbd>[</kbd><span class="shortcut-desc">Previous annotation</span></li>
+              <li><kbd>]</kbd><span class="shortcut-desc">Next annotation</span></li>
+            </ul>
+          </section>
+
+          <section class="shortcuts-group">
+            <h3 class="shortcuts-group-label">Zoom</h3>
+            <ul class="shortcuts-list">
+              <li><kbd>+</kbd><span class="shortcut-sep">/</span><kbd>=</kbd><span class="shortcut-desc">Zoom in</span></li>
+              <li><kbd>−</kbd><span class="shortcut-desc">Zoom out</span></li>
+              <li><kbd>0</kbd><span class="shortcut-desc">Reset to 100%</span></li>
+              <li><kbd>⌘</kbd><span class="shortcut-sep">+</span><kbd>scroll</kbd><span class="shortcut-desc">Pinch zoom</span></li>
+            </ul>
+          </section>
+
+          <section class="shortcuts-group">
+            <h3 class="shortcuts-group-label">Search</h3>
+            <ul class="shortcuts-list">
+              <li><kbd>⌘F</kbd><span class="shortcut-desc">Open / close search</span></li>
+              <li><kbd>Enter</kbd><span class="shortcut-desc">Next match</span></li>
+              <li><kbd>⇧Enter</kbd><span class="shortcut-desc">Previous match</span></li>
+              <li><kbd>Esc</kbd><span class="shortcut-desc">Close search</span></li>
+            </ul>
+          </section>
+
+          <section class="shortcuts-group">
+            <h3 class="shortcuts-group-label">Annotations</h3>
+            <ul class="shortcuts-list">
+              <li><kbd>C</kbd><span class="shortcut-desc">Add comment (on selection)</span></li>
+              <li><kbd>Q</kbd><span class="shortcut-desc">Ask question (on selection)</span></li>
+              <li><kbd>P</kbd><span class="shortcut-desc">Create puzzle (on selection)</span></li>
+              {#if is_admin}
+                <li><kbd>M</kbd><span class="shortcut-desc">Place milestone (on selection)</span></li>
+              {/if}
+            </ul>
+          </section>
+
+          <section class="shortcuts-group">
+            <h3 class="shortcuts-group-label">View</h3>
+            <ul class="shortcuts-list">
+              <li><span class="shortcut-btn">NRW / MED / WDE</span><span class="shortcut-desc">Cycle column width</span></li>
+              <li><span class="shortcut-btn">DEF / SEPIA / NIGHT</span><span class="shortcut-desc">Cycle view mode</span></li>
+              <li><span class="shortcut-btn">SNAP</span><span class="shortcut-desc">Toggle page snap</span></li>
+              <li><span class="shortcut-btn">≡</span><span class="shortcut-desc">Toggle thumbnail strip</span></li>
+              <li><kbd>?</kbd><span class="shortcut-desc">This cheatsheet</span></li>
+              <li><kbd>Esc</kbd><span class="shortcut-desc">Close panels</span></li>
+            </ul>
+          </section>
+        </div>
+      </div>
     </div>
   {/if}
 </div>
@@ -2547,6 +2669,181 @@
     color: var(--color-terracotta);
     opacity: 0.75;
     white-space: nowrap;
+  }
+
+  /* ── Scroll-snap page transitions ───────────────────────────────────────── */
+
+  .reader.snap-mode .scroll {
+    scroll-snap-type: y mandatory;
+  }
+
+  .reader.snap-mode .page {
+    scroll-snap-align: start;
+  }
+
+  /* ── Export link (indicator) ─────────────────────────────────────────────── */
+
+  .export-link {
+    text-decoration: none;
+    font-size: 0.85rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* ── Keyboard shortcut cheatsheet modal ──────────────────────────────────── */
+
+  .shortcuts-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(42, 37, 33, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: shortcuts-fade-in 0.15s ease;
+  }
+
+  @keyframes shortcuts-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  .shortcuts-modal {
+    background: var(--color-paper);
+    border: 1px solid var(--color-paper-2);
+    box-shadow: 0 4px 24px rgba(42, 37, 33, 0.12);
+    border-radius: 3px;
+    width: min(680px, 92vw);
+    max-height: 80vh;
+    overflow-y: auto;
+    animation: shortcuts-slide-in 0.18s ease;
+  }
+
+  @keyframes shortcuts-slide-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .shortcuts-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem 1.2rem 0.7rem;
+    border-bottom: 1px solid var(--color-paper-2);
+  }
+
+  .shortcuts-title {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--color-ink-soft);
+  }
+
+  .shortcuts-close {
+    border: none;
+    background: transparent;
+    color: var(--color-ink-soft);
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.2rem 0.4rem;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: color 0.1s ease, background 0.1s ease;
+  }
+
+  .shortcuts-close:hover {
+    color: var(--color-terracotta);
+    background: var(--color-paper-2);
+  }
+
+  .shortcuts-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0;
+    padding: 0.5rem 0;
+  }
+
+  .shortcuts-group {
+    padding: 0.85rem 1.2rem;
+    border-right: 1px solid var(--color-paper-2);
+    border-bottom: 1px solid var(--color-paper-2);
+  }
+
+  .shortcuts-group:last-child {
+    border-right: none;
+  }
+
+  .shortcuts-group-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--color-terracotta);
+    margin: 0 0 0.7rem;
+    font-weight: normal;
+  }
+
+  .shortcuts-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .shortcuts-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-wrap: wrap;
+  }
+
+  .shortcuts-list kbd {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--color-ink);
+    background: var(--color-paper-2);
+    border: 1px solid color-mix(in srgb, var(--color-ink-soft) 25%, transparent);
+    border-radius: 2px;
+    padding: 0.1rem 0.35rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .shortcut-sep {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--color-ink-soft);
+    opacity: 0.5;
+  }
+
+  .shortcut-desc {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--color-ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    flex: 1;
+    margin-left: 0.2rem;
+  }
+
+  /* For non-key labels like "NRW / MED / WDE" */
+  .shortcut-btn {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--color-ink);
+    background: var(--color-paper-2);
+    border: 1px solid color-mix(in srgb, var(--color-ink-soft) 20%, transparent);
+    border-radius: 2px;
+    padding: 0.1rem 0.35rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   /* ── Selection menu keyboard hints ──────────────────────────────────────── */
