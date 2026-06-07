@@ -78,7 +78,7 @@ This is the only API surface between the two worlds. Keep it small and stable.
 
 **Events (Svelte → LiveView):**
 
-- `text_selected` → `{ text, page, rect, type }` — `type` ∈ `"comment" | "question" | "puzzle" | "milestone"`. The `"milestone"` variant is admin-only and only emitted when the canvas's `is_admin?` prop is true (Slice 12 revised); the LV opens a label form in the margin pre-filled with the selected text, and `save_milestone` creates the milestone using the rect's top-left for `position`. (added Slice 10; `"milestone"` added when the placement UX moved into the selection menu.)
+- `text_selected` → `{ text, page, rect, type }` — `type` ∈ `"comment" | "question" | "puzzle" | "milestone" | "ai"`. The `"milestone"` variant is admin-only and only emitted when the canvas's `is_admin?` prop is true (Slice 12 revised); the LV opens a label form in the margin pre-filled with the selected text, and `save_milestone` creates the milestone using the rect's top-left for `position`. The `"ai"` variant (Slice 11) opens an annotation form (type `:question` in the DB) labeled "Ask AI"; on save the LV dispatches `AnswerWorker` and adds the annotation to `@ai_pending_annotation_ids`. (added Slice 10; `"milestone"` added when the placement UX moved into the selection menu; `"ai"` added Slice 11.)
 - `annotation_clicked` → `{ id }`
 <!-- `milestone_placed` was retired in Slice 12 (revised, take 2): milestone
 placement now flows through `text_selected` with `type: "milestone"`, so
@@ -97,6 +97,26 @@ These are emitted via `push_event/3` and consumed inside the Svelte canvas via `
 - `scroll_to_page` → `{ page }` — fires when the LiveView wants the canvas to bring a specific page into view (currently used by the chapter rail). The canvas calls `scrollIntoView({ behavior: "smooth", block: "start" })` on the matching slot. The canvas's `pages_visible` IO callback then updates `:focal_page` naturally — no separate state sync needed. (added Slice 17; an earlier `scroll_to_page` from the first cut of Slice 15a was removed before 15a closed; this is its re-introduction for chapter navigation.)
 
 If you need a new prop or event, **add it to this contract in the same PR** and update §4.3 here. Don't smuggle in undocumented channels.
+
+---
+
+**`ConceptMapBoard.svelte`** (Slice 22) — concept map board at `/workspaces/:wid/library/:id/board`. Justified as a second Svelte component because it is a completely separate screen, not the PDF canvas.
+
+**Props (LiveView → Svelte):**
+
+- `nodes[]` — `[{ id, label, position_x, position_y, color, user_id }]`
+- `edges[]` — `[{ id, source_id, target_id, label }]`
+- `current_user_id` — UUID of the signed-in actor
+
+**Events (Svelte → LiveView):**
+
+- `node_created` → `{ label, position_x, position_y }` — new node placed on canvas
+- `node_moved` → `{ id, position_x, position_y }` — node drag ended (debounced; LiveView updates DB but does NOT reload assigns for the originator — Svelte already has the correct position)
+- `node_deleted` → `{ id }` — node removed (cascades to its edges via DB FK)
+- `edge_created` → `{ source_id, target_id }` — connection drawn between two nodes
+- `edge_deleted` → `{ id }` — edge removed
+
+PubSub topic: `"resource:#{id}:board"` (separate from `:annotations` and `:chat` topics).
 
 ### 4.4 Real-time is Phoenix PubSub
 

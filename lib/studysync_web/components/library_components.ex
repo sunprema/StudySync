@@ -73,6 +73,7 @@ defmodule StudysyncWeb.LibraryComponents do
   attr :focal?, :boolean, default: false
   attr :reply_count, :integer, default: 0
   attr :expanded?, :boolean, default: false
+  attr :ai_pending?, :boolean, default: false
   attr :now, :any, default: nil
   slot :thread
 
@@ -182,6 +183,14 @@ defmodule StudysyncWeb.LibraryComponents do
         <%= cond do %>
           <% @expanded? -> %>
             Hide thread
+          <% @ai_pending? and @reply_count == 0 -> %>
+            <span class="inline-flex items-center gap-1">
+              <span class="animate-pulse">·</span> AI thinking
+            </span>
+          <% @reply_count > 0 and @ai_pending? -> %>
+            <span class="num">{@reply_count}</span>
+            {if @reply_count == 1, do: "reply", else: "replies"}
+            <span class="animate-pulse ml-1">· AI</span>
           <% @reply_count > 0 -> %>
             <span class="num">{@reply_count}</span>
             {if @reply_count == 1, do: "reply", else: "replies"}

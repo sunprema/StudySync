@@ -26,6 +26,7 @@ defmodule Studysync.Annotations do
     resource Studysync.Annotations.AnnotationComment do
       define :list_replies, action: :read
       define :reply, action: :reply, args: [:annotation_id, :body]
+      define :ai_reply, action: :ai_reply, args: [:annotation_id, :body]
     end
   end
 

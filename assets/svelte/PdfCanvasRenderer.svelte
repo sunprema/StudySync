@@ -610,6 +610,7 @@
         if (e.key === "c" || e.key === "C") { e.preventDefault(); commitSelection(null, "comment"); return; }
         if (e.key === "q" || e.key === "Q") { e.preventDefault(); commitSelection(null, "question"); return; }
         if (e.key === "p" || e.key === "P") { e.preventDefault(); commitSelection(null, "puzzle"); return; }
+        if (e.key === "a" || e.key === "A") { e.preventDefault(); commitSelection(null, "ai"); return; }
         if (is_admin && (e.key === "m" || e.key === "M")) { e.preventDefault(); commitSelection(null, "milestone"); return; }
       }
 
@@ -1531,6 +1532,13 @@
       >
         <span>+ Create puzzle</span><kbd>P</kbd>
       </button>
+      <button
+        class="selection-btn selection-btn-ai"
+        data-type="ai"
+        onmousedown={(e) => commitSelection(e, "ai")}
+      >
+        <span>+ Ask AI</span><kbd>A</kbd>
+      </button>
       {#if is_admin}
         <button
           class="selection-btn selection-btn-divider"
@@ -2256,6 +2264,14 @@
   .selection-btn:hover {
     color: var(--color-terracotta);
     background: var(--color-paper-2);
+  }
+
+  /* Slice 11 — AI option sits between the annotation types and the admin
+     milestone divider. Butter tint on hover so it reads as a distinct
+     action from the human annotation types. */
+  .selection-btn-ai:hover {
+    color: var(--color-ink);
+    background: oklch(from var(--color-butter, #f5e6a3) l c h / 0.35);
   }
 
   /* Slice 12 (revised, take 2) — admin-only milestone option lives in the

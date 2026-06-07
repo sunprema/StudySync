@@ -1,6 +1,7 @@
 defmodule StudysyncWeb.PdfLive.Show do
   use StudysyncWeb, :live_view
 
+  alias Studysync.AI.AnswerWorker
   alias Studysync.Annotations
   alias Studysync.Annotations.PubSub, as: AnnotationsPubSub
   alias Studysync.Chat
@@ -93,6 +94,7 @@ defmodule StudysyncWeb.PdfLive.Show do
           |> assign(:milestone_pending_placement, nil)
           |> assign(:chapters, [])
           |> assign(:page_readers, %{})
+          |> assign(:ai_pending_annotation_ids, MapSet.new())
           |> assign(:initial_chat_messages, initial_chat_messages)
           |> assign(:chat_here_now, chat_here_now)
           |> assign(:readers_here, readers_here)
@@ -244,6 +246,12 @@ defmodule StudysyncWeb.PdfLive.Show do
           <div class="flex items-center gap-4 shrink-0">
             <.reader_presence readers={@readers_here} />
             <span class="mono-tag num"><span class="num">{@resource.page_count}</span> pages</span>
+            <.link
+              navigate={~p"/workspaces/#{@workspace_id}/library/#{@resource.id}/board"}
+              class="mono-tag hover:text-terracotta transition-colors"
+            >
+              Board ↗
+            </.link>
             <button
               :if={!@active_sprint && !@show_sprint_form}
               phx-click="show_sprint_form"
@@ -411,6 +419,7 @@ defmodule StudysyncWeb.PdfLive.Show do
               focal?={annotation.page_number == @focal_page}
               reply_count={annotation.reply_count}
               expanded?={@expanded_thread_id == annotation.id}
+              ai_pending?={MapSet.member?(@ai_pending_annotation_ids, annotation.id)}
             >
               <:thread>
                 <.thread_reply
@@ -720,6 +729,41 @@ defmodule StudysyncWeb.PdfLive.Show do
          |> assign(:annotation_form, nil)
          |> assign(:annotation_form_type, nil)}
     end
+  end
+
+  # Slice 11: "Ask AI" from the floating selection menu. Opens the same form
+  # flow as comment/question, but the save handler dispatches AnswerWorker
+  # after creating the annotation. We use annotation_form_type :ai internally;
+  # the DB action is :create_question.
+  def handle_event(
+        "text_selected",
+        %{"text" => text, "page" => page, "rect" => rect, "type" => "ai"},
+        socket
+      ) do
+    actor = socket.assigns.current_user
+
+    form =
+      Annotations.Annotation
+      |> AshPhoenix.Form.for_create(:create_question,
+        actor: actor,
+        params: %{
+          "resource_id" => socket.assigns.resource.id,
+          "page_number" => page,
+          "rect" => rect,
+          "text" => text,
+          "body" => "",
+          "visibility" => "workspace"
+        }
+      )
+      |> to_form()
+
+    {:noreply,
+     socket
+     |> assign(:selection, %{text: text, page: page, rect: rect})
+     |> assign(:annotation_form, form)
+     |> assign(:annotation_form_type, :ai)
+     |> assign(:milestone_form, nil)
+     |> assign(:milestone_pending_placement, nil)}
   end
 
   def handle_event(
@@ -1062,13 +1106,30 @@ defmodule StudysyncWeb.PdfLive.Show do
 
     case result do
       {:ok, annotation} ->
-        {:noreply,
-         socket
-         |> insert_annotation(annotation)
-         |> assign(:selection, nil)
-         |> assign(:annotation_form, nil)
-         |> assign(:annotation_form_type, nil)
-         |> put_flash(:info, save_flash(type))}
+        socket =
+          socket
+          |> insert_annotation(annotation)
+          |> assign(:selection, nil)
+          |> assign(:annotation_form, nil)
+          |> assign(:annotation_form_type, nil)
+
+        # Slice 11: dispatch AI worker and track loading state.
+        socket =
+          if type == :ai do
+            %{"annotation_id" => annotation.id}
+            |> AnswerWorker.new()
+            |> Oban.insert!()
+
+            assign(
+              socket,
+              :ai_pending_annotation_ids,
+              MapSet.put(socket.assigns.ai_pending_annotation_ids, annotation.id)
+            )
+          else
+            socket
+          end
+
+        {:noreply, put_flash(socket, :info, save_flash(type))}
 
       {:error, %AshPhoenix.Form{} = form} ->
         {:noreply, assign(socket, :annotation_form, form)}
@@ -1158,8 +1219,10 @@ defmodule StudysyncWeb.PdfLive.Show do
     end
   end
 
-  # PubSub: a peer replied to an annotation on this resource. Always bump
+  # PubSub: a peer (or the AI worker) replied to an annotation. Always bump
   # the badge; only fetch the reply body if the matching thread is open.
+  # Slice 11: also clears ai_pending_annotation_ids when a reply arrives so
+  # the loading indicator dismisses as soon as the AI responds.
   def handle_info(
         {:reply_created, %{id: id, annotation_id: annotation_id, resource_id: resource_id}},
         socket
@@ -1168,6 +1231,13 @@ defmodule StudysyncWeb.PdfLive.Show do
       {:noreply, socket}
     else
       socket = bump_reply_count(socket, annotation_id)
+
+      socket =
+        assign(
+          socket,
+          :ai_pending_annotation_ids,
+          MapSet.delete(socket.assigns.ai_pending_annotation_ids, annotation_id)
+        )
 
       if socket.assigns.expanded_thread_id == annotation_id do
         case fetch_reply(id, socket.assigns.current_user) do
@@ -1696,14 +1766,17 @@ defmodule StudysyncWeb.PdfLive.Show do
 
   defp form_label(:question), do: "question"
   defp form_label(:puzzle), do: "puzzle"
+  defp form_label(:ai), do: "AI query"
   defp form_label(_), do: "note"
 
   defp form_placeholder(:question), do: "Your question…"
   defp form_placeholder(:puzzle), do: "What's puzzling here?"
+  defp form_placeholder(:ai), do: "What would you like the AI to explore? (optional)"
   defp form_placeholder(_), do: "Your note…"
 
   defp save_flash(:question), do: "Question saved."
   defp save_flash(:puzzle), do: "Puzzle saved."
+  defp save_flash(:ai), do: "AI is thinking…"
   defp save_flash(_), do: "Note saved."
 
   defp filter_label(:comment), do: "comments"

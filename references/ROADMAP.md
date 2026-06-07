@@ -207,16 +207,16 @@ Add `:question` and `:puzzle` types. Floating menu offers all three.
 
 User selects text → "Ask AI" → Oban job runs → AI response appears as a comment in the thread marked `is_ai_response: true`.
 
-- [ ] **11.1** Anthropic API client module with API key from runtime config
-- [ ] **11.2** Oban worker: `StudySync.AI.AnswerWorker` — accepts annotation_id and selected text
-- [ ] **11.3** Worker calls Claude with the selected text + thread context
-- [ ] **11.4** Worker writes response as `AnnotationComment` with `is_ai_response: true`
-- [ ] **11.5** Worker broadcasts via PubSub on completion
-- [ ] **11.6** Floating menu: "Ask AI" option
-- [ ] **11.7** Visual treatment: AI replies have a distinct subtle marker (small "AI" tag in mono) — never lean on emoji
-- [ ] **11.8** Loading state in thread while job runs
-- [ ] **11.9** Failure state with retry option
-- [ ] **11.10** Tests: worker happy path, failure path, broadcast on completion
+- [x] **11.1** Anthropic API client module with API key from runtime config
+- [x] **11.2** Oban worker: `StudySync.AI.AnswerWorker` — accepts annotation_id and selected text
+- [x] **11.3** Worker calls Claude with the selected text + thread context
+- [x] **11.4** Worker writes response as `AnnotationComment` with `is_ai_response: true`
+- [x] **11.5** Worker broadcasts via PubSub on completion
+- [x] **11.6** Floating menu: "Ask AI" option
+- [x] **11.7** Visual treatment: AI replies have a distinct subtle marker (small "AI" tag in mono) — never lean on emoji
+- [x] **11.8** Loading state in thread while job runs
+- [x] **11.9** Failure state with retry option (graceful error reply on final Oban attempt)
+- [x] **11.10** Tests: worker happy path, failure path, broadcast on completion
 
 ---
 
@@ -399,6 +399,29 @@ A member can start a timed reading sprint with a page range. Other members can j
 - [x] **21.6** Post-sprint "compare notes" modal — fires when `:sprint_ended` arrives; queries annotations created `between sprint.started_at and sprint.ended_at` by sprint members on the sprint's page range; groups by member; renders in a two-column grid so readers can scan peers' reactions.
 - [x] **21.7** Migrations via `mix ash.codegen sprint_resources`.
 - [x] **21.8** Tests: start sprint, join sprint, expire job transitions status + broadcasts, compare-notes query returns only sprint-window annotations, policy guards.
+
+---
+
+## Slice 22 — Collaborative Concept Map Board
+
+A per-resource concept map board where workspace members can create idea nodes, connect them with edges, and see each other's changes in real time. Serves as the "shared whiteboard" feature marketed on the landing page. SvelteFlow (`@xyflow/svelte`) drives the interactive canvas; Phoenix PubSub syncs state across sessions. Accessed via a "Board ↗" link in the PDF reader header; lives at its own route.
+
+Any active workspace member can create, move, and delete any node or edge — fully collaborative by design.
+
+- [x] **22.1** `@xyflow/svelte` npm package installed.
+- [x] **22.2** `Studysync.Board` Ash domain (`lib/studysync/board.ex`); registered in `config/config.exs`.
+- [x] **22.3** `Studysync.Board.Node` Ash resource — `board_nodes` table; `:create`, `:move` (update), `:delete`, `:read` actions; membership policy for all actions.
+- [x] **22.4** `Studysync.Board.Edge` Ash resource — `board_edges` table; `:create`, `:delete`, `:read` actions; `[:source_id, :target_id]` unique identity; cascade-delete when source/target node deleted.
+- [x] **22.5** `Studysync.Board.PubSub` — topic `"resource:#{id}:board"`; broadcasts `node_created/moved/deleted` and `edge_created/deleted`; same telemetry span pattern as Annotations.PubSub.
+- [x] **22.6** Change modules for all five broadcast events (under `board/node/changes/` and `board/edge/changes/`).
+- [x] **22.7** Migration: `mix ash.codegen board_resources` → `priv/repo/migrations/20260607052700_board_resources.exs`.
+- [x] **22.8** `ConceptMapBoard.svelte` — SvelteFlow canvas with `+ New node` toolbar form, drag-to-move (debounced `pushEvent("node_moved", ...)`), connect-handles for edges, Delete/Backspace to remove selected items. Direction 01 palette applied via `--xy-*` CSS variables.
+- [x] **22.9** `StudysyncWeb.BoardLive.Show` LiveView — mount loads nodes/edges, subscribes to Board.PubSub, tracks presence. Handles all five Svelte events + five PubSub messages. Props: `board_nodes/1` and `board_edges/1` transform helpers.
+- [x] **22.10** Route: `live "/workspaces/:workspace_id/library/:id/board", BoardLive.Show, :show` added to the authenticated session block.
+- [x] **22.11** `"Board ↗"` link added to the PDF reader header in `PdfLive.Show`.
+- [x] **22.12** CLAUDE.md §4.3 updated with `ConceptMapBoard.svelte` contract (props + events).
+- [x] **22.13** Tests: 9 domain tests (`board_test.exs`) + 7 LiveView tests (`board_live/show_test.exs`). All 232 suite tests green.
+- [ ] **22.14** Manual verification: two browser sessions — create a node in one, confirm it appears in the other within ~500ms; drag a node and confirm DB position updates; connect nodes; delete node confirms cascade to edges.
 
 ---
 

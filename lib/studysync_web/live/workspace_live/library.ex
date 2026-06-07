@@ -40,6 +40,8 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
           |> assign(:workspace, workspace)
           |> assign(:page_title, workspace.name <> " — Library")
           |> assign(:title, "")
+          |> assign(:url, "")
+          |> assign(:import_mode, :file)
           |> assign(:upload_error, nil)
           |> assign(:has_resources?, resources != [])
           |> assign(:show_uploader, resources == [])
@@ -110,6 +112,8 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
                     <.upload_form
                       uploads={@uploads}
                       title={@title}
+                      url={@url}
+                      import_mode={@import_mode}
                       upload_error={@upload_error}
                       show_close?={false}
                     />
@@ -140,6 +144,8 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
                   <.upload_form
                     uploads={@uploads}
                     title={@title}
+                    url={@url}
+                    import_mode={@import_mode}
                     upload_error={@upload_error}
                     show_close?={true}
                   />
@@ -288,7 +294,62 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
      socket
      |> assign(:show_uploader, false)
      |> assign(:title, "")
+     |> assign(:url, "")
+     |> assign(:import_mode, :file)
      |> assign(:upload_error, nil)}
+  end
+
+  def handle_event("set_import_mode", %{"mode" => mode}, socket) do
+    {:noreply, assign(socket, :import_mode, String.to_existing_atom(mode))}
+  end
+
+  def handle_event("validate_url", %{"title" => title, "url" => url}, socket) do
+    {:noreply, socket |> assign(:title, title) |> assign(:url, url)}
+  end
+
+  def handle_event("import_url", %{"title" => title, "url" => url}, socket) do
+    actor = socket.assigns.current_user
+    workspace = socket.assigns.workspace
+    url = String.trim(url)
+    title = String.trim(title)
+
+    cond do
+      url == "" ->
+        {:noreply, assign(socket, :upload_error, "Paste a PDF URL first.")}
+
+      title == "" ->
+        {:noreply, assign(socket, :upload_error, "Title is required.")}
+
+      true ->
+        case Library.import_resource_from_url(
+               workspace.id,
+               title,
+               url,
+               actor: actor,
+               load: [:uploaded_by]
+             ) do
+          {:ok, resource} ->
+            empty_row = empty_matrix_row(socket.assigns.members)
+            matrix = Map.put(socket.assigns.progress_matrix, resource.id, empty_row)
+            milestones = Map.put(socket.assigns.milestones_by_resource, resource.id, [])
+
+            {:noreply,
+             socket
+             |> assign(:title, "")
+             |> assign(:url, "")
+             |> assign(:import_mode, :file)
+             |> assign(:upload_error, nil)
+             |> assign(:has_resources?, true)
+             |> assign(:show_uploader, false)
+             |> assign(:progress_matrix, matrix)
+             |> assign(:milestones_by_resource, milestones)
+             |> stream_insert(:resources, resource, at: 0)
+             |> put_flash(:info, "PDF imported.")}
+
+          {:error, error} ->
+            {:noreply, assign(socket, :upload_error, format_error(error))}
+        end
+    end
   end
 
   def handle_event("upload", %{"title" => title}, socket) do
@@ -608,89 +669,189 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
   # private function component so the two render paths stay in sync.
   attr :uploads, :map, required: true
   attr :title, :string, required: true
+  attr :url, :string, required: true
+  attr :import_mode, :atom, required: true
   attr :upload_error, :string, default: nil
   attr :show_close?, :boolean, default: false
 
   defp upload_form(assigns) do
     ~H"""
-    <form id="upload-form" phx-change="validate" phx-submit="upload" class="space-y-5">
-      <label
-        for={@uploads.pdf.ref}
-        phx-drop-target={@uploads.pdf.ref}
-        class={[
-          "block cursor-pointer rounded-lg border-2 border-dashed border-ink-soft/30",
-          "bg-paper px-8 py-12 text-center transition",
-          "hover:border-terracotta/60 hover:bg-paper-2/30",
-          "[&.phx-drop-target-active]:border-terracotta",
-          "[&.phx-drop-target-active]:border-solid",
-          "[&.phx-drop-target-active]:bg-paper-2"
-        ]}
-      >
-        <p class="font-display text-3xl text-ink">Drop a PDF here</p>
-        <p class="section-label mt-3">or click to browse · 50 MB max</p>
-        <.live_file_input upload={@uploads.pdf} class="sr-only" />
-      </label>
+    <div class="space-y-5">
+      <%!-- Mode toggle --%>
+      <div class="flex gap-1 border border-paper-2 rounded-lg p-1 w-fit">
+        <button
+          type="button"
+          phx-click="set_import_mode"
+          phx-value-mode="file"
+          class={[
+            "px-4 py-1.5 rounded text-sm transition font-mono uppercase tracking-wide",
+            if(@import_mode == :file,
+              do: "bg-terracotta text-paper",
+              else: "text-ink-soft hover:text-ink"
+            )
+          ]}
+        >
+          Upload file
+        </button>
+        <button
+          type="button"
+          phx-click="set_import_mode"
+          phx-value-mode="url"
+          class={[
+            "px-4 py-1.5 rounded text-sm transition font-mono uppercase tracking-wide",
+            if(@import_mode == :url,
+              do: "bg-terracotta text-paper",
+              else: "text-ink-soft hover:text-ink"
+            )
+          ]}
+        >
+          Import from URL
+        </button>
+      </div>
 
-      <div
-        :for={entry <- @uploads.pdf.entries}
-        class="space-y-4 border border-paper-2 bg-paper-2/40 px-5 py-4 rounded"
+      <%!-- File upload form --%>
+      <form
+        :if={@import_mode == :file}
+        id="upload-form"
+        phx-change="validate"
+        phx-submit="upload"
+        class="space-y-5"
       >
-        <div class="flex items-center justify-between gap-3">
-          <span class="font-serif text-base text-ink truncate">{entry.client_name}</span>
-          <button
-            type="button"
-            phx-click="cancel_upload"
-            phx-value-ref={entry.ref}
-            class="btn btn-ghost btn-sm shrink-0"
+        <label
+          for={@uploads.pdf.ref}
+          phx-drop-target={@uploads.pdf.ref}
+          class={[
+            "block cursor-pointer rounded-lg border-2 border-dashed border-ink-soft/30",
+            "bg-paper px-8 py-12 text-center transition",
+            "hover:border-terracotta/60 hover:bg-paper-2/30",
+            "[&.phx-drop-target-active]:border-terracotta",
+            "[&.phx-drop-target-active]:border-solid",
+            "[&.phx-drop-target-active]:bg-paper-2"
+          ]}
+        >
+          <p class="font-display text-3xl text-ink">Drop a PDF here</p>
+          <p class="section-label mt-3">or click to browse · 50 MB max</p>
+          <.live_file_input upload={@uploads.pdf} class="sr-only" />
+        </label>
+
+        <div
+          :for={entry <- @uploads.pdf.entries}
+          class="space-y-4 border border-paper-2 bg-paper-2/40 px-5 py-4 rounded"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <span class="font-serif text-base text-ink truncate">{entry.client_name}</span>
+            <button
+              type="button"
+              phx-click="cancel_upload"
+              phx-value-ref={entry.ref}
+              class="btn btn-ghost btn-sm shrink-0"
+            >
+              remove
+            </button>
+          </div>
+          <progress
+            :if={entry.progress > 0}
+            value={entry.progress}
+            max="100"
+            class="progress progress-primary w-full"
           >
-            remove
+            {entry.progress}%
+          </progress>
+          <div>
+            <label for="resource-title" class="section-label">Title</label>
+            <input
+              id="resource-title"
+              name="title"
+              type="text"
+              value={@title}
+              placeholder="Invisible Cities"
+              class="w-full input mt-2 font-serif"
+              required
+            />
+          </div>
+        </div>
+
+        <div :for={err <- upload_errors(@uploads.pdf)} class="section-label text-terracotta">
+          {error_to_string(err)}
+        </div>
+        <p :if={@upload_error} class="section-label text-terracotta">{@upload_error}</p>
+
+        <div :if={@uploads.pdf.entries != []} class="flex items-center gap-3">
+          <button type="submit" class="btn btn-primary">Place on shelf</button>
+          <button
+            :if={@show_close?}
+            type="button"
+            phx-click="close_uploader"
+            class="btn btn-ghost btn-sm"
+          >
+            Cancel
           </button>
         </div>
-        <progress
-          :if={entry.progress > 0}
-          value={entry.progress}
-          max="100"
-          class="progress progress-primary w-full"
-        >
-          {entry.progress}%
-        </progress>
+
+        <div :if={@show_close? and @uploads.pdf.entries == []}>
+          <button type="button" phx-click="close_uploader" class="btn btn-ghost btn-sm">
+            Cancel
+          </button>
+        </div>
+      </form>
+
+      <%!-- URL import form --%>
+      <form
+        :if={@import_mode == :url}
+        id="url-import-form"
+        phx-change="validate_url"
+        phx-submit="import_url"
+        class="space-y-4"
+      >
         <div>
-          <label for="resource-title" class="section-label">Title</label>
+          <label for="import-url" class="section-label">PDF URL</label>
           <input
-            id="resource-title"
+            id="import-url"
+            name="url"
+            type="url"
+            value={@url}
+            placeholder="https://arxiv.org/pdf/2501.12948"
+            class="w-full input mt-2 font-serif"
+            required
+          />
+          <p class="section-label mt-1.5 text-ink-soft/60">
+            The server fetches the PDF — no browser CORS issues.
+          </p>
+        </div>
+        <div>
+          <label for="import-title" class="section-label">Title</label>
+          <input
+            id="import-title"
             name="title"
             type="text"
             value={@title}
-            placeholder="Invisible Cities"
+            placeholder="Attention Is All You Need"
             class="w-full input mt-2 font-serif"
             required
           />
         </div>
-      </div>
 
-      <div :for={err <- upload_errors(@uploads.pdf)} class="section-label text-terracotta">
-        {error_to_string(err)}
-      </div>
-      <p :if={@upload_error} class="section-label text-terracotta">{@upload_error}</p>
+        <p :if={@upload_error} class="section-label text-terracotta">{@upload_error}</p>
 
-      <div :if={@uploads.pdf.entries != []} class="flex items-center gap-3">
-        <button type="submit" class="btn btn-primary">Place on shelf</button>
-        <button
-          :if={@show_close?}
-          type="button"
-          phx-click="close_uploader"
-          class="btn btn-ghost btn-sm"
-        >
-          Cancel
-        </button>
-      </div>
+        <div class="flex items-center gap-3">
+          <button type="submit" class="btn btn-primary">Place on shelf</button>
+          <button
+            :if={@show_close?}
+            type="button"
+            phx-click="close_uploader"
+            class="btn btn-ghost btn-sm"
+          >
+            Cancel
+          </button>
+        </div>
 
-      <div :if={@show_close? and @uploads.pdf.entries == []}>
-        <button type="button" phx-click="close_uploader" class="btn btn-ghost btn-sm">
-          Cancel
-        </button>
-      </div>
-    </form>
+        <div :if={@show_close? and @url == "" and @title == ""}>
+          <button type="button" phx-click="close_uploader" class="btn btn-ghost btn-sm">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
     """
   end
 

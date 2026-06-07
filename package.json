@@ -1,6 +1,7 @@
 {
   "type": "module",
   "dependencies": {
+    "@xyflow/svelte": "^1.6.0",
     "live_svelte": "file:./deps/live_svelte",
     "pdfjs-dist": "^4.10.38",
     "phoenix": "file:./deps/phoenix",

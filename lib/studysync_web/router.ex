@@ -33,6 +33,7 @@ defmodule StudysyncWeb.Router do
       live "/workspaces/:id", WorkspaceLive.Show, :show
       live "/workspaces/:id/library", WorkspaceLive.Library, :library
       live "/workspaces/:workspace_id/library/:id", PdfLive.Show, :show
+      live "/workspaces/:workspace_id/library/:id/board", BoardLive.Show, :show
     end
 
     ash_authentication_live_session :invite_routes,

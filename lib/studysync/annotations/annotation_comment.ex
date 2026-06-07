@@ -28,6 +28,18 @@ defmodule Studysync.Annotations.AnnotationComment do
       change set_attribute(:body, arg(:body))
       change Studysync.Annotations.AnnotationComment.Changes.BroadcastReply
     end
+
+    # Called from AnswerWorker (Slice 11) with `authorize?: false`.
+    # No user actor — user_id stays nil.
+    create :ai_reply do
+      argument :annotation_id, :uuid, allow_nil?: false
+      argument :body, :string, allow_nil?: false
+
+      change set_attribute(:is_ai_response, true)
+      change set_attribute(:annotation_id, arg(:annotation_id))
+      change set_attribute(:body, arg(:body))
+      change Studysync.Annotations.AnnotationComment.Changes.BroadcastReply
+    end
   end
 
   policies do

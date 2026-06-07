@@ -26,6 +26,15 @@ defmodule Studysync.Library.Resource do
       change relate_actor(:uploaded_by, allow_nil?: true)
       change Studysync.Library.Resource.Changes.StoreUpload
     end
+
+    create :import_from_url do
+      argument :workspace_id, :uuid, allow_nil?: false
+      argument :title, :string, allow_nil?: false
+      argument :url, :string, allow_nil?: false
+
+      change relate_actor(:uploaded_by, allow_nil?: true)
+      change Studysync.Library.Resource.Changes.FetchUrl
+    end
   end
 
   policies do
@@ -39,6 +48,10 @@ defmodule Studysync.Library.Resource do
     end
 
     policy action(:upload) do
+      authorize_if Studysync.Workspaces.Checks.ActorIsWorkspaceMember
+    end
+
+    policy action(:import_from_url) do
       authorize_if Studysync.Workspaces.Checks.ActorIsWorkspaceMember
     end
   end
