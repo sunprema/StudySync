@@ -31,6 +31,7 @@ defmodule Studysync.Annotations.Annotation do
       change relate_actor(:user)
       change Studysync.Annotations.Annotation.Changes.SetCommentAttributes
       change Studysync.Annotations.Annotation.Changes.BroadcastCreated
+      change Studysync.Annotations.Annotation.Changes.TriggerCollectiveInsight
     end
 
     create :create_question do
@@ -46,6 +47,7 @@ defmodule Studysync.Annotations.Annotation do
       change relate_actor(:user)
       change Studysync.Annotations.Annotation.Changes.SetCommentAttributes
       change Studysync.Annotations.Annotation.Changes.BroadcastCreated
+      change Studysync.Annotations.Annotation.Changes.TriggerCollectiveInsight
     end
 
     create :create_puzzle do
@@ -61,6 +63,7 @@ defmodule Studysync.Annotations.Annotation do
       change relate_actor(:user)
       change Studysync.Annotations.Annotation.Changes.SetCommentAttributes
       change Studysync.Annotations.Annotation.Changes.BroadcastCreated
+      change Studysync.Annotations.Annotation.Changes.TriggerCollectiveInsight
     end
   end
 

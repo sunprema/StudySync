@@ -291,7 +291,6 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
      |> assign(:upload_error, nil)}
   end
 
-
   def handle_event("upload", %{"title" => title}, socket) do
     actor = socket.assigns.current_user
     workspace = socket.assigns.workspace

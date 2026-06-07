@@ -8,6 +8,8 @@ defmodule StudysyncWeb.PdfLive.Show do
   alias Studysync.Library
   alias Studysync.Presence
   alias Studysync.Progress
+  alias Studysync.Progress.CollectiveInsight
+  alias Studysync.Sprints
   alias Studysync.Workspaces
 
   @chat_panel_id "chat-panel"
@@ -28,12 +30,16 @@ defmodule StudysyncWeb.PdfLive.Show do
         annotations = Annotations.list_annotations_for_resource(resource.id, actor: actor)
 
         milestones = load_milestones(resource.id, actor)
+        collective_insights = load_collective_insights(resource.id)
+        active_sprint = Sprints.active_sprint(resource.id)
+        sprint_member? = active_sprint && Sprints.sprint_member?(active_sprint, actor.id)
         is_admin? = Workspaces.actor_admin?(workspace_id, actor)
         total_readers = count_workspace_members(workspace_id)
 
         if connected?(socket) do
           AnnotationsPubSub.subscribe(resource.id)
           ChatPubSub.subscribe(resource.id)
+          if active_sprint, do: schedule_sprint_tick()
 
           # Slice 18.8 — track presence on the chat topic so the panel can
           # show "X here now". Presence auto-untracks when this process exits.
@@ -75,11 +81,18 @@ defmodule StudysyncWeb.PdfLive.Show do
           |> assign(:filter_type, :all)
           |> assign(:filter_scope, :all)
           |> assign(:milestones, milestones)
+          |> assign(:collective_insights, collective_insights)
+          |> assign(:active_sprint, active_sprint)
+          |> assign(:sprint_member?, sprint_member?)
+          |> assign(:sprint_countdown, sprint_countdown(active_sprint))
+          |> assign(:show_sprint_form, false)
+          |> assign(:compare_notes, nil)
           |> assign(:is_admin?, is_admin?)
           |> assign(:total_readers, total_readers)
           |> assign(:milestone_form, nil)
           |> assign(:milestone_pending_placement, nil)
           |> assign(:chapters, [])
+          |> assign(:page_readers, %{})
           |> assign(:initial_chat_messages, initial_chat_messages)
           |> assign(:chat_here_now, chat_here_now)
           |> assign(:readers_here, readers_here)
@@ -131,9 +144,19 @@ defmodule StudysyncWeb.PdfLive.Show do
   end
 
   def terminate(_reason, socket) do
-    if Map.get(socket.assigns, :resource) do
-      AnnotationsPubSub.unsubscribe(socket.assigns.resource.id)
-      ChatPubSub.unsubscribe(socket.assigns.resource.id)
+    if resource = Map.get(socket.assigns, :resource) do
+      AnnotationsPubSub.unsubscribe(resource.id)
+      ChatPubSub.unsubscribe(resource.id)
+
+      # Broadcast departure so other readers' page-presence clears immediately.
+      if actor = Map.get(socket.assigns, :current_user) do
+        Phoenix.PubSub.broadcast_from!(
+          Studysync.PubSub,
+          self(),
+          AnnotationsPubSub.topic(resource.id),
+          {:reader_left, actor.id}
+        )
+      end
     end
 
     :ok
@@ -175,12 +198,22 @@ defmodule StudysyncWeb.PdfLive.Show do
     # doesn't reflow them across `<span>` boundaries.
     scoped = scoped_annotations(assigns.annotations, assigns.filter_scope, assigns.focal_page)
 
+    scoped_insights =
+      case assigns.filter_scope do
+        :page ->
+          Enum.filter(assigns.collective_insights, &(&1.page_number == assigns.focal_page))
+
+        _ ->
+          assigns.collective_insights
+      end
+
     assigns =
       assigns
       |> assign(:scoped_visible, visible_annotations(scoped, assigns.filter_type))
       |> assign(:scoped_total, length(scoped))
       |> assign(:scoped_filtered, filtered_count(scoped, assigns.filter_type))
       |> assign(:scoped_annotations, scoped)
+      |> assign(:scoped_insights, scoped_insights)
       |> assign(:page_focal_count, page_scope_count(assigns.annotations, assigns.focal_page))
       |> assign(:chat_panel_id, @chat_panel_id)
 
@@ -211,9 +244,27 @@ defmodule StudysyncWeb.PdfLive.Show do
           <div class="flex items-center gap-4 shrink-0">
             <.reader_presence readers={@readers_here} />
             <span class="mono-tag num"><span class="num">{@resource.page_count}</span> pages</span>
+            <button
+              :if={!@active_sprint && !@show_sprint_form}
+              phx-click="show_sprint_form"
+              class="btn btn-ghost btn-xs section-label text-ink-soft hover:text-terracotta"
+            >
+              Start sprint
+            </button>
             <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
           </div>
         </header>
+
+        <.sprint_form_banner :if={@show_sprint_form} resource={@resource} />
+
+        <.sprint_banner
+          :if={@active_sprint && !@show_sprint_form}
+          sprint={@active_sprint}
+          sprint_member?={@sprint_member?}
+          countdown={@sprint_countdown}
+        />
+
+        <.compare_notes_modal :if={@compare_notes} notes={@compare_notes} sprint={@active_sprint} />
 
         <div id="pdf-canvas" class="flex-1 overflow-hidden">
           <.svelte
@@ -228,7 +279,8 @@ defmodule StudysyncWeb.PdfLive.Show do
                 rubber_stamps: svelte_stamps(@milestones),
                 current_user_id: @current_user.id,
                 total_readers: @total_readers,
-                active_annotation_id: @active_annotation_id
+                active_annotation_id: @active_annotation_id,
+                page_readers: svelte_page_readers(@page_readers)
               }
             }
             socket={@socket}
@@ -262,11 +314,22 @@ defmodule StudysyncWeb.PdfLive.Show do
             />
           </nav>
 
-          <p class="section-label">
-            Margin · <span class="num">{@scoped_filtered}</span>
-            of <span class="num">{@scoped_total}</span>
-            notes
-          </p>
+          <div class="flex items-baseline justify-between">
+            <p class="section-label">
+              Margin · <span class="num">{@scoped_filtered}</span>
+              of <span class="num">{@scoped_total}</span>
+              notes
+            </p>
+            <a
+              href={~p"/resources/#{@resource.id}/journal.pdf"}
+              target="_blank"
+              rel="noopener"
+              class="section-label text-terracotta hover:underline"
+              title="Export your annotations as a reading journal PDF"
+            >
+              Export journal
+            </a>
+          </div>
 
           <nav aria-label="Filter by type" class="flex flex-wrap gap-1.5">
             <.filter_chip
@@ -325,6 +388,9 @@ defmodule StudysyncWeb.PdfLive.Show do
             kind={:no_filtered}
             label={filter_label(@filter_type)}
           />
+
+          <%!-- Slice 20 — GROUP LENS cards: one per page when 3+ readers annotated it. --%>
+          <.group_lens_card :for={insight <- @scoped_insights} insight={insight} />
 
           <%!--
             Slice 15a (revert): single, stable list of every annotation in
@@ -529,6 +595,24 @@ defmodule StudysyncWeb.PdfLive.Show do
         <% end %>
       </p>
     </section>
+    """
+  end
+
+  attr :insight, :any, required: true
+
+  defp group_lens_card(assigns) do
+    ~H"""
+    <div class="mb-3 rounded-md border-l-[3px] border-amber-400 bg-amber-50 px-4 py-3">
+      <div class="flex items-center justify-between mb-2">
+        <span class="section-label text-amber-700 tracking-widest">
+          GROUP LENS · PAGE {@insight.page_number}
+        </span>
+        <span class="section-label text-amber-600">
+          <span class="num">{length(@insight.contributor_ids)}</span> readers
+        </span>
+      </div>
+      <p class="font-serif text-sm text-ink leading-relaxed">{@insight.synthesis}</p>
+    </div>
     """
   end
 
@@ -844,6 +928,14 @@ defmodule StudysyncWeb.PdfLive.Show do
     if new_focal == socket.assigns.focal_page do
       {:noreply, socket}
     else
+      actor = socket.assigns.current_user
+      resource_id = socket.assigns.resource.id
+      Phoenix.PubSub.broadcast_from!(
+        Studysync.PubSub,
+        self(),
+        AnnotationsPubSub.topic(resource_id),
+        {:reader_page, actor.id, to_string(actor.email), new_focal}
+      )
       {:noreply, assign(socket, :focal_page, new_focal)}
     end
   end
@@ -983,6 +1075,69 @@ defmodule StudysyncWeb.PdfLive.Show do
     end
   end
 
+  def handle_event("show_sprint_form", _params, socket) do
+    {:noreply, assign(socket, :show_sprint_form, true)}
+  end
+
+  def handle_event("cancel_sprint_form", _params, socket) do
+    {:noreply, assign(socket, :show_sprint_form, false)}
+  end
+
+  def handle_event(
+        "start_sprint",
+        %{
+          "start_page" => start_page,
+          "end_page" => end_page,
+          "duration_minutes" => duration_minutes
+        },
+        socket
+      ) do
+    actor = socket.assigns.current_user
+    resource = socket.assigns.resource
+
+    with {sp, ""} <- Integer.parse(start_page),
+         {ep, ""} <- Integer.parse(end_page),
+         {dur, ""} <- Integer.parse(duration_minutes),
+         true <- sp >= 1 and ep >= sp and dur >= 1 and dur <= 120 do
+      case Sprints.start_sprint(
+             resource.id,
+             socket.assigns.workspace_id,
+             sp,
+             ep,
+             dur,
+             actor: actor
+           ) do
+        {:ok, _sprint} ->
+          {:noreply, socket}
+
+        {:error, _} ->
+          {:noreply, put_flash(socket, :error, "Could not start sprint.")}
+      end
+    else
+      _ ->
+        {:noreply, put_flash(socket, :error, "Invalid sprint parameters.")}
+    end
+  end
+
+  def handle_event("join_sprint", %{"sprint_id" => sprint_id}, socket) do
+    actor = socket.assigns.current_user
+
+    case Sprints.join_sprint(sprint_id, actor: actor) do
+      {:ok, _member} ->
+        {:noreply, assign(socket, :sprint_member?, true)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not join sprint.")}
+    end
+  end
+
+  def handle_event("dismiss_compare_notes", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:compare_notes, nil)
+     |> assign(:active_sprint, nil)}
+  end
+
   # PubSub: a peer just created an annotation on this resource. Refetch so
   # we run our own actor's read policies, then patch the stream + sidebar.
   def handle_info({:annotation_created, %{id: id, resource_id: resource_id}}, socket) do
@@ -1073,6 +1228,112 @@ defmodule StudysyncWeb.PdfLive.Show do
       _ = milestone_id
       {:noreply, refresh_milestones(socket)}
     end
+  end
+
+  # PubSub: the AI finished generating a GROUP LENS insight for a page on this
+  # resource. Prepend to the list so it appears without a full reload.
+  def handle_info({:collective_insight_ready, insight}, socket) do
+    if insight.resource_id != socket.assigns.resource.id do
+      {:noreply, socket}
+    else
+      insights = [insight | socket.assigns.collective_insights]
+      {:noreply, assign(socket, :collective_insights, insights)}
+    end
+  end
+
+  # Sprint PubSub handlers
+
+  def handle_info({:sprint_started, sprint}, socket) do
+    if sprint.resource_id != socket.assigns.resource.id do
+      {:noreply, socket}
+    else
+      schedule_sprint_tick()
+      actor = socket.assigns.current_user
+      sprint_member? = Sprints.sprint_member?(sprint, actor.id)
+
+      {:noreply,
+       socket
+       |> assign(:active_sprint, sprint)
+       |> assign(:sprint_member?, sprint_member?)
+       |> assign(:sprint_countdown, sprint_countdown(sprint))
+       |> assign(:show_sprint_form, false)}
+    end
+  end
+
+  def handle_info({:sprint_joined, sprint}, socket) do
+    if sprint.resource_id != socket.assigns.resource.id do
+      {:noreply, socket}
+    else
+      actor = socket.assigns.current_user
+      sprint_member? = Sprints.sprint_member?(sprint, actor.id)
+
+      {:noreply,
+       socket
+       |> assign(:active_sprint, sprint)
+       |> assign(:sprint_member?, sprint_member?)}
+    end
+  end
+
+  def handle_info({:sprint_ended, sprint}, socket) do
+    if sprint.resource_id != socket.assigns.resource.id do
+      {:noreply, socket}
+    else
+      sprint_with_members =
+        case Ash.get(Studysync.Sprints.Sprint, sprint.id,
+               load: [members: []],
+               authorize?: false
+             ) do
+          {:ok, s} -> s
+          _ -> sprint
+        end
+
+      notes = Sprints.compare_notes(sprint_with_members)
+
+      {:noreply,
+       socket
+       |> assign(:active_sprint, sprint_with_members)
+       |> assign(:sprint_member?, false)
+       |> assign(:sprint_countdown, nil)
+       |> assign(:compare_notes, notes)}
+    end
+  end
+
+  def handle_info(:sprint_tick, socket) do
+    case socket.assigns.active_sprint do
+      %{status: :active} = sprint ->
+        schedule_sprint_tick()
+        {:noreply, assign(socket, :sprint_countdown, sprint_countdown(sprint))}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  # Page presence — another reader moved to a new page.
+  def handle_info({:reader_page, user_id, email, page}, socket) do
+    updated =
+      socket.assigns.page_readers
+      |> Enum.map(fn {p, readers} -> {p, Enum.reject(readers, &(&1.user_id == user_id))} end)
+      |> Enum.reject(fn {_p, readers} -> readers == [] end)
+      |> Map.new()
+      |> Map.update(page, [%{user_id: user_id, email: email}], fn readers ->
+        if Enum.any?(readers, &(&1.user_id == user_id)),
+          do: readers,
+          else: [%{user_id: user_id, email: email} | readers]
+      end)
+
+    {:noreply, assign(socket, :page_readers, updated)}
+  end
+
+  # Page presence — a reader closed the PDF; remove them from all pages.
+  def handle_info({:reader_left, user_id}, socket) do
+    updated =
+      socket.assigns.page_readers
+      |> Enum.map(fn {p, readers} -> {p, Enum.reject(readers, &(&1.user_id == user_id))} end)
+      |> Enum.reject(fn {_p, readers} -> readers == [] end)
+      |> Map.new()
+
+    {:noreply, assign(socket, :page_readers, updated)}
   end
 
   defp refresh_milestones(socket) do
@@ -1195,8 +1456,21 @@ defmodule StudysyncWeb.PdfLive.Show do
       |> Enum.sort_by(& &1.inserted_at, DateTime)
       |> Enum.with_index(1)
       |> Enum.map(fn {a, idx} ->
-        %{id: a.id, number: idx, page: a.page_number, rect: a.rect, type: a.type}
+        %{id: a.id, number: idx, page: a.page_number, rect: a.rect, type: a.type, text: a.text}
       end)
+    end)
+  end
+
+  # Page presence: flatten the page → readers map into a list the Svelte
+  # canvas can render as ambient "N people here" badges.
+  defp svelte_page_readers(page_readers) do
+    page_readers
+    |> Enum.map(fn {page, readers} ->
+      %{
+        page: page,
+        count: length(readers),
+        emails: Enum.map(readers, & &1.email)
+      }
     end)
   end
 
@@ -1221,6 +1495,13 @@ defmodule StudysyncWeb.PdfLive.Show do
           true -> DateTime.compare(t1, t2) != :gt
         end
     end)
+  end
+
+  defp load_collective_insights(resource_id) do
+    CollectiveInsight
+    |> Ash.Query.filter(resource_id == ^resource_id)
+    |> Ash.Query.sort(page_number: :asc)
+    |> Ash.read!(authorize?: false)
   end
 
   defp load_milestones(resource_id, actor) do
@@ -1442,4 +1723,160 @@ defmodule StudysyncWeb.PdfLive.Show do
   defp outcome_tag({:ok, _}), do: :ok
   defp outcome_tag({:error, _}), do: :error
   defp outcome_tag(_), do: :unknown
+
+  # ── Sprint helpers ────────────────────────────────────────────────────────────
+
+  defp schedule_sprint_tick do
+    Process.send_after(self(), :sprint_tick, 1_000)
+  end
+
+  defp sprint_countdown(nil), do: nil
+  defp sprint_countdown(%{status: :ended}), do: nil
+
+  defp sprint_countdown(%{inserted_at: inserted_at, duration_minutes: dur}) do
+    expires_at = DateTime.add(inserted_at, dur * 60, :second)
+    remaining = DateTime.diff(expires_at, DateTime.utc_now(), :second)
+
+    if remaining <= 0 do
+      "0:00:00"
+    else
+      h = div(remaining, 3600)
+      m = div(rem(remaining, 3600), 60)
+      s = rem(remaining, 60)
+
+      "#{h}:#{String.pad_leading(to_string(m), 2, "0")}:#{String.pad_leading(to_string(s), 2, "0")}"
+    end
+  end
+
+  # ── Sprint UI components ──────────────────────────────────────────────────────
+
+  attr :resource, :any, required: true
+
+  defp sprint_form_banner(assigns) do
+    ~H"""
+    <div class="bg-amber-50 border-b border-amber-200 px-5 py-3">
+      <p class="section-label text-amber-700 mb-2">NEW SPRINT</p>
+      <form phx-submit="start_sprint" class="flex flex-wrap items-end gap-3">
+        <div>
+          <label class="section-label text-ink-soft block mb-1">Pages</label>
+          <div class="flex items-center gap-1">
+            <input
+              type="number"
+              name="start_page"
+              min="1"
+              max={@resource.page_count}
+              placeholder="from"
+              required
+              class="input input-sm w-20 font-mono"
+            />
+            <span class="section-label text-ink-soft">–</span>
+            <input
+              type="number"
+              name="end_page"
+              min="1"
+              max={@resource.page_count}
+              placeholder="to"
+              required
+              class="input input-sm w-20 font-mono"
+            />
+          </div>
+        </div>
+        <div>
+          <label class="section-label text-ink-soft block mb-1">Duration</label>
+          <select name="duration_minutes" class="select select-sm font-mono">
+            <option value="5">5 min</option>
+            <option value="10">10 min</option>
+            <option value="15" selected>15 min</option>
+            <option value="20">20 min</option>
+            <option value="30">30 min</option>
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <button type="submit" class="btn btn-primary btn-sm">Start</button>
+          <button type="button" phx-click="cancel_sprint_form" class="btn btn-ghost btn-sm">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+    """
+  end
+
+  attr :sprint, :any, required: true
+  attr :sprint_member?, :boolean, required: true
+  attr :countdown, :string, default: nil
+
+  defp sprint_banner(assigns) do
+    ~H"""
+    <div class="bg-amber-50 border-b border-amber-200 px-5 py-2.5 flex items-center gap-4">
+      <span class="section-label text-amber-700">SPRINT ACTIVE</span>
+      <span class="section-label text-ink-soft">
+        Pages <span class="num">{@sprint.start_page}</span>–<span class="num">{@sprint.end_page}</span>
+      </span>
+      <span class="font-mono text-sm text-amber-800 tabular-nums flex-1">{@countdown}</span>
+      <button
+        :if={!@sprint_member?}
+        phx-click="join_sprint"
+        phx-value-sprint_id={@sprint.id}
+        class="btn btn-warning btn-xs"
+      >
+        Join sprint
+      </button>
+      <span :if={@sprint_member?} class="section-label text-amber-600">Joined</span>
+    </div>
+    """
+  end
+
+  attr :notes, :list, required: true
+  attr :sprint, :any, required: true
+
+  defp compare_notes_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-ink/40">
+      <div class="bg-paper rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col mx-4">
+        <div class="px-6 py-4 border-b border-paper-2 flex items-baseline justify-between">
+          <div>
+            <p class="section-label text-terracotta">SPRINT ENDED · COMPARE NOTES</p>
+            <p class="font-display text-xl text-ink mt-0.5">
+              Pages {@sprint && @sprint.start_page}–{@sprint && @sprint.end_page}
+            </p>
+          </div>
+          <button
+            phx-click="dismiss_compare_notes"
+            class="section-label text-ink-soft hover:text-terracotta"
+          >
+            Close
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6">
+          <p :if={@notes == []} class="font-serif text-ink-soft italic text-center py-8">
+            No annotations were created during this sprint.
+          </p>
+
+          <div :if={@notes != []} class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div :for={{_user_id, email, annotations} <- @notes} class="space-y-3">
+              <p class="section-label text-terracotta">
+                {email |> String.split("@") |> List.first() |> String.upcase()}
+                <span class="text-ink-soft ml-1">
+                  · <span class="num">{length(annotations)}</span> notes
+                </span>
+              </p>
+              <div
+                :for={ann <- annotations}
+                class="border-l-2 border-paper-2 pl-3 py-1 space-y-1"
+              >
+                <p class="section-label text-ink-soft">
+                  p. <span class="num">{ann.page_number}</span>
+                </p>
+                <p :if={ann.text != ""} class="font-serif text-xs italic text-ink-soft">{ann.text}</p>
+                <p class="font-serif text-sm text-ink">{ann.body}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
 end

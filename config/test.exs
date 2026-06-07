@@ -1,5 +1,11 @@
 import Config
 config :studysync, Oban, testing: :manual
+
+# Stub the AI completion function so tests don't hit the Anthropic API.
+config :studysync, :ai_complete_fn, fn _messages, _opts ->
+  {:ok, "A synthesised reading-group insight generated for testing."}
+end
+
 config :studysync, token_signing_secret: "i/PlCz3iF+lY8VqLUjXkrUbaNZ5Ae0EH"
 
 # Skip SSR in tests — there's no Vite/Node runtime to render Svelte

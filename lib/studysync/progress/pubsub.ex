@@ -13,6 +13,24 @@ defmodule Studysync.Progress.PubSub do
 
   @pubsub Studysync.PubSub
 
+  def broadcast_collective_insight_ready(resource_id, insight)
+      when is_binary(resource_id) do
+    :telemetry.span(
+      [:studysync, :pubsub, :broadcast],
+      %{topic: topic(resource_id), event: :collective_insight_ready},
+      fn ->
+        result =
+          Phoenix.PubSub.broadcast!(
+            @pubsub,
+            topic(resource_id),
+            {:collective_insight_ready, insight}
+          )
+
+        {result, %{topic: topic(resource_id), event: :collective_insight_ready}}
+      end
+    )
+  end
+
   def broadcast_stamp_applied(resource_id, milestone_id, stamp_id)
       when is_binary(resource_id) and is_binary(milestone_id) and is_binary(stamp_id) do
     :telemetry.span(

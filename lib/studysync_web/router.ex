@@ -41,6 +41,7 @@ defmodule StudysyncWeb.Router do
     end
 
     get "/resources/:id/file", ResourceFileController, :show
+    get "/resources/:id/journal.pdf", ResourceJournalController, :show
   end
 
   scope "/", StudysyncWeb do

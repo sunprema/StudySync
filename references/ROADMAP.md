@@ -359,6 +359,49 @@ The thin chapter rail on the left was a layout placeholder since Slice 3 — fiv
 
 ---
 
+## Slice 19 — Reading Journal Export
+
+A reader can export all their personal annotations for a book as a beautifully typeset PDF "reading journal" — their private marginalia captured in the Margin Notes aesthetic. The journal is generated synchronously on demand and streamed as a download. Uses Imprintor + Typst.
+
+- [x] **19.1** `priv/typst/reading_journal.typ` — Typst template: cover page (book title, reader email, export date in Instrument Serif); one section per annotated page; each annotation rendered as a card with the captured passage as a block quote, type badge (COMMENT / QUESTION / PUZZLE in mono caps), the annotation body, and any thread replies below it (AI replies in a butter-tinted style); page footer "StudySync · Reading Journal". Boolean and nil coercions applied per CLAUDE.md typst-skill rules.
+- [x] **19.2** `Studysync.ReadingJournal` module — `build_data/2 (actor, resource_id)`: reads the actor's annotations for the resource via Ash (ordered by page number, then `inserted_at`), eagerly loads `:replies` with `:user`, serializes to a flat map suitable for Imprintor. Private annotations only — no workspace-visible annotations belonging to other users.
+- [x] **19.3** `StudysyncWeb.ResourceJournalController` — `GET /resources/:id/journal.pdf`: authenticates the actor via the session, authorizes via `Ash.can?`, calls `ReadingJournal.build_data/2`, compiles with Imprintor, and sends the PDF binary with `content-disposition: attachment; filename="journal.pdf"`. No Oban — journals are generated on the fly; they're small (one user's annotations).
+- [x] **19.4** Route wired in `router.ex` under the authenticated scope.
+- [x] **19.5** "Export journal" link in the reader UI — a small mono-caps download link in the margin column header (or the resource header dropdown). Opens in a new tab so the reader isn't navigated away.
+- [x] **19.6** Tests: `build_data/2` returns only the actor's annotations; controller returns 200 with `content-type: application/pdf` for a member; 404 for a non-member.
+
+---
+
+## Slice 20 — Collective Insight Cards
+
+When three or more distinct workspace members independently annotate the same page, AI synthesises a "group lens" card that surfaces what the reading group collectively noticed. The card lives in the margin column, visually distinct from individual annotations.
+
+- [x] **20.1** Anthropic API client module `Studysync.AI.Client` — wraps `req`; reads `ANTHROPIC_API_KEY` from runtime config; exposes `complete/2 (messages, opts)` returning `{:ok, text} | {:error, reason}`.
+- [x] **20.2** `Studysync.Progress.CollectiveInsight` Ash resource — `resource_id`, `page_number`, `synthesis` (text), `contributor_ids` (list of UUIDs), `contributing_annotation_ids` (list of UUIDs). No policies for MVP — internal-only creation; reads allowed for workspace members.
+- [x] **20.3** `Studysync.AI.CollectiveInsightJob` Oban worker — triggered after each annotation is created; checks if 3+ distinct users have annotations on the same `(resource_id, page_number)` pair with no existing `CollectiveInsight` for that page; if so, collects the annotation bodies + passages, builds a prompt ("These readers each annotated the same page..."), calls `AI.Client.complete/2`, and creates the `CollectiveInsight` record.
+- [x] **20.4** `Studysync.Annotations.Changes.TriggerCollectiveInsight` change module — dispatches the Oban job after successful annotation create. Attached to the `:comment`, `:question`, and `:puzzle` create actions.
+- [x] **20.5** PubSub broadcast on `CollectiveInsight` creation via `"resource:#{id}"` topic with `{:collective_insight_ready, insight}`.
+- [x] **20.6** LiveView: subscribe to `:collective_insight_ready`, maintain `@collective_insights` assign (list), pass via the margin panel. Render in `<.group_lens_card>` component with a "GROUP LENS" mono-caps badge, amber-tinted left border, and contributor count. Filtered by scope (page/all) in `render/1`.
+- [x] **20.7** Deduplication guard: one insight per `(resource_id, page_number)` — a unique DB index prevents a second run from racing in.
+- [x] **20.8** Tests: `CollectiveInsightJob` happy path (3 distinct users → insight created + broadcast), dedup guard (4th annotation on same page → job is a no-op), fewer-than-3 guard.
+
+---
+
+## Slice 21 — Reading Sprints
+
+A member can start a timed reading sprint with a page range. Other members can join. When the sprint ends, a "compare notes" reveal shows all annotations created during the sprint from all participants side by side.
+
+- [x] **21.1** `Studysync.Sprints.Sprint` Ash resource — `resource_id`, `workspace_id`, `started_by_id`, `start_page`, `end_page`, `duration_minutes`, `started_at`, `ended_at`, `status` (`:active | :ended`). Actions: `:start`, `:join`, `:end_sprint`. `SprintMember` join table: `sprint_id`, `user_id`, `joined_at`.
+- [x] **21.2** Ash policies: any active workspace member can start or join a sprint; only the starter can end it early.
+- [x] **21.3** Oban job `Studysync.Sprints.ExpireJob` — scheduled on sprint start for `duration_minutes` minutes out; transitions sprint to `:ended` and broadcasts `:sprint_ended`.
+- [x] **21.4** PubSub events: `:sprint_started`, `:sprint_joined`, `:sprint_ended` — all on the existing `"resource:#{id}"` topic.
+- [x] **21.5** Sprint UI in the reader — "Start sprint" button in the resource header (member only). Active sprint: a quiet amber banner below the header showing the page range, a live countdown timer (`h:mm:ss` in JetBrains Mono), and a "Join sprint" button for non-members. Timer updates via `:timer.send_interval/3` in the LiveView — no client-side JS needed.
+- [x] **21.6** Post-sprint "compare notes" modal — fires when `:sprint_ended` arrives; queries annotations created `between sprint.started_at and sprint.ended_at` by sprint members on the sprint's page range; groups by member; renders in a two-column grid so readers can scan peers' reactions.
+- [x] **21.7** Migrations via `mix ash.codegen sprint_resources`.
+- [x] **21.8** Tests: start sprint, join sprint, expire job transitions status + broadcasts, compare-notes query returns only sprint-window annotations, policy guards.
+
+---
+
 ## Slice 18 — Transient Study-Room Chat
 
 A reader-scoped chat drawer so members of a workspace reading the same book can murmur in real time alongside their annotations. Transient by design: messages live in a per-resource ETS ring buffer for the lifetime of the BEAM node, then they're gone. Annotations remain the durable record of thinking; chat is the ephemeral side-channel.

@@ -76,7 +76,8 @@ config :studysync,
     Studysync.Workspaces,
     Studysync.Library,
     Studysync.Annotations,
-    Studysync.Progress
+    Studysync.Progress,
+    Studysync.Sprints
   ],
   storage_adapter: Studysync.Library.Storage.Local,
   storage_path: "priv/uploads",

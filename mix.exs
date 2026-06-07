@@ -110,6 +110,8 @@ defmodule Studysync.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
+      {:imprintor, "~> 0.1.0"},
+      {:rustler, "~> 0.37.3", runtime: false},
       {:live_agent,
        if(Mix.env() == :dev and File.dir?("/Volumes/x/projects/elixir_libs/live_agent"),
          do: [path: "/Volumes/x/projects/elixir_libs/live_agent", override: true, only: :dev],

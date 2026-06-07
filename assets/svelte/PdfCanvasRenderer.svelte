@@ -61,13 +61,14 @@
   let {
     file_url,
     total_pages = 0,
-    annotations = [],
+    annotations = [],        // [{ id, number, page, rect, type, text }]
     milestone_markers = [],
     is_admin = false,
     rubber_stamps = [],
     current_user_id = null,
     total_readers = 0,
     active_annotation_id = null,
+    page_readers = [],       // [{ page, count, emails }] — other readers' positions
   } = $props();
 
   const { pushEvent } = useLiveSvelte();
@@ -102,10 +103,43 @@
   // in the popover before closing it.
   let stampConfirmedMilestoneId = $state(null);
 
+  // Reading quality: column width and view mode
+  let widthMode = $state("medium"); // "narrow" | "medium" | "wide"
+  let viewMode = $state("default"); // "default" | "sepia" | "night"
+
+  // Navigation: thumbnail strip and chapter breadcrumb
+  let showThumbs = $state(false);
+  let localChapters = $state([]); // chapters received from outline_loaded, cached here too
+
+
+  // Feature: in-document search + annotation note search
+  let showSearch = $state(false);
+  let searchQuery = $state("");
+  let searchMode = $state("doc"); // "doc" | "notes"
+  let searchResults = $state([]); // doc mode: [{ page, highlights: [{x,y,width,height}] }]
+  let searchResultIndex = $state(0);
+  let annotationMatchIndex = $state(0); // notes mode index
+  let isSearching = $state(false);
+  let searchInputEl = $state(null);
+
+  // Reading timer — tracks active reading time, resets on 90s inactivity.
+  let readingSeconds = $state(0);
+  let _readingActive = false; // non-reactive internal flag
+  let _readingInterval = null;
+  let _inactivityTimeout = null;
+
   let pdfDoc = null;
   let observer = null;
   let pulseTimer = null;
   let stampConfirmTimer = null;
+  // Text content cache for search — not reactive, cleared when pdfDoc changes.
+  const pageTextCache = new Map();
+  // Thumbnail render cache — separate from the main page render cache since
+  // thumbs use a different scale. Cleared when the thumb panel reopens.
+  const renderedThumbs = new Set();
+  let thumbObserver = null;
+  // Position persistence: restored once after pages load.
+  let positionRestored = false;
   // Render-cache for canvases. Off $state so we don't trigger Svelte
   // re-renders on every page paint.
   const renderedPages = new Set();
@@ -174,6 +208,67 @@
     return { milestone, stamps, stampedByMe };
   });
 
+  // Current chapter based on focal page — last chapter whose start page ≤ currentPage.
+  const currentChapter = $derived.by(() => {
+    if (!localChapters.length) return null;
+    const sorted = [...localChapters].sort((a, b) => a.page - b.page);
+    let result = null;
+    for (const c of sorted) {
+      if (c.page <= currentPage) result = c;
+      else break;
+    }
+    return result;
+  });
+
+  // Annotation note search — filters annotations whose selected text matches.
+  const annotationMatches = $derived.by(() => {
+    if (searchMode !== "notes" || !searchQuery.trim()) return [];
+    const lower = searchQuery.toLowerCase();
+    return (annotations || []).filter(
+      (a) => (a.text || "").toLowerCase().includes(lower),
+    );
+  });
+
+  // Page readers keyed by page number for the presence badge lookup.
+  const pageReadersMap = $derived.by(() => {
+    const map = new Map();
+    for (const r of page_readers || []) map.set(r.page, r);
+    return map;
+  });
+
+  // Reading time label — null until the user has been reading for 60+ seconds.
+  const readingTimeLabel = $derived.by(() => {
+    if (readingSeconds < 60) return null;
+    const m = Math.floor(readingSeconds / 60);
+    const h = Math.floor(m / 60);
+    return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
+  });
+
+  // Search highlights keyed by page for fast lookup in the highlight layer.
+  const searchHighlightsByPage = $derived.by(() => {
+    const map = new Map();
+    for (const r of searchResults) map.set(r.page, r.highlights);
+    return map;
+  });
+
+  // Total match count across all result pages.
+  const totalSearchHits = $derived(
+    searchResults.reduce((sum, r) => sum + r.highlights.length, 0),
+  );
+
+  // Annotations sorted in reading order (page → top-to-bottom) for [ / ] navigation.
+  const sortedAnnotations = $derived.by(() =>
+    [...(annotations || [])].sort((a, b) => {
+      if (a.page !== b.page) return a.page - b.page;
+      return (a.rect?.y ?? 0) - (b.rect?.y ?? 0);
+    }),
+  );
+
+  // Heatmap viewport indicator — rough position of current page in the document.
+  const heatmapViewportTop = $derived(
+    pages.length > 1 ? ((currentPage - 1) / (pages.length - 1)) * 100 : 0,
+  );
+
   const ZOOM_STEPS = [75, 100, 125, 150, 175, 200];
   const ZOOM_MIN = 50;
   const ZOOM_MAX = 300;
@@ -193,6 +288,8 @@
         container: null,
         canvas: null,
         textLayer: null,
+        thumbContainer: null,
+        thumbCanvas: null,
       }));
 
       reportOutline();
@@ -224,6 +321,7 @@
     } catch (e) {
       console.warn("PdfCanvasRenderer: outline extraction failed", e);
     }
+    localChapters = chapters;
     pushEvent("outline_loaded", { chapters });
   }
 
@@ -246,10 +344,13 @@
 
   onDestroy(() => {
     if (observer) observer.disconnect();
+    if (thumbObserver) thumbObserver.disconnect();
     if (pdfDoc) pdfDoc.destroy?.();
     if (pulseTimer) clearTimeout(pulseTimer);
     if (stampConfirmTimer) clearTimeout(stampConfirmTimer);
     if (visiblePagesDebounce) clearTimeout(visiblePagesDebounce);
+    pageTextCache.clear();
+    renderedThumbs.clear();
   });
 
   // Hover linking: the margin column dispatches a custom DOM event when a
@@ -262,6 +363,104 @@
     document.addEventListener("studysync:annotation-hover", handler);
     return () =>
       document.removeEventListener("studysync:annotation-hover", handler);
+  });
+
+  // Auto-focus the search input whenever the search bar opens.
+  $effect(() => {
+    if (showSearch && searchInputEl) searchInputEl.focus();
+  });
+
+  // Reading timer: track activity via document events, increment every second
+  // while active, reset the clock after 90s of inactivity.
+  $effect(() => {
+    function markActivity() {
+      if (!_readingActive) {
+        _readingActive = true;
+        _readingInterval = setInterval(() => { readingSeconds += 1; }, 1000);
+      }
+      if (_inactivityTimeout) clearTimeout(_inactivityTimeout);
+      _inactivityTimeout = setTimeout(() => {
+        _readingActive = false;
+        if (_readingInterval) { clearInterval(_readingInterval); _readingInterval = null; }
+      }, 90_000);
+    }
+
+    const events = ["mousemove", "scroll", "keydown", "click", "touchstart"];
+    events.forEach((ev) => document.addEventListener(ev, markActivity, { passive: true }));
+
+    return () => {
+      events.forEach((ev) => document.removeEventListener(ev, markActivity));
+      if (_readingInterval) clearInterval(_readingInterval);
+      if (_inactivityTimeout) clearTimeout(_inactivityTimeout);
+    };
+  });
+
+  // Reset annotation match index whenever query or mode changes.
+  $effect(() => {
+    searchQuery; searchMode; // track both as dependencies
+    annotationMatchIndex = 0;
+  });
+
+  // Debounced search: re-runs whenever searchQuery changes.
+  $effect(() => {
+    const q = searchQuery;
+    const timer = setTimeout(() => runSearch(q), 300);
+    return () => clearTimeout(timer);
+  });
+
+  // Thumbnail strip: lazy-render thumbs via their own IntersectionObserver.
+  // Re-runs when showThumbs toggles; clearing renderedThumbs ensures canvases
+  // that were destroyed and re-created on re-open get repainted.
+  $effect(() => {
+    if (!showThumbs || pages.length === 0 || !pdfDoc) {
+      if (thumbObserver) { thumbObserver.disconnect(); thumbObserver = null; }
+      return;
+    }
+
+    renderedThumbs.clear();
+
+    thumbObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const num = Number(entry.target.dataset.thumbNum);
+          if (!renderedThumbs.has(num)) renderThumb(num);
+        }
+      },
+      { threshold: 0 },
+    );
+
+    for (const p of pages) {
+      if (p.thumbContainer) thumbObserver.observe(p.thumbContainer);
+    }
+
+    return () => { if (thumbObserver) { thumbObserver.disconnect(); thumbObserver = null; } };
+  });
+
+  // Position persistence: restore saved page once after the pages array is populated.
+  $effect(() => {
+    if (positionRestored || pages.length === 0 || !file_url) return;
+    positionRestored = true;
+    const key = posKey();
+    if (!key) return;
+    const saved = parseInt(localStorage.getItem(key) || "0", 10);
+    if (saved > 1 && saved <= pages.length) {
+      // Delay to ensure page containers are bound by Svelte's DOM update.
+      setTimeout(() => scrollToPage(saved), 150);
+    }
+  });
+
+  // Position persistence: save current page whenever it changes.
+  $effect(() => {
+    const page = currentPage;
+    if (!file_url || pages.length === 0) return;
+    const key = posKey();
+    if (!key) return;
+    if (page > 1) {
+      localStorage.setItem(key, String(page));
+    } else {
+      localStorage.removeItem(key);
+    }
   });
 
   // Scroll-to-page-and-highlight when active_annotation_id changes (5.3, 5.6).
@@ -373,12 +572,17 @@
         tag === "TEXTAREA" ||
         e.target?.isContentEditable;
 
+      // Cmd/Ctrl+F — always open search, even from editable fields.
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+        e.preventDefault();
+        showSearch ? closeSearch() : openSearch();
+        return;
+      }
+
       if (e.key === "Escape") {
         let consumed = false;
-        if (milestonePopover) {
-          closeMilestonePopover();
-          consumed = true;
-        }
+        if (showSearch) { closeSearch(); consumed = true; }
+        if (milestonePopover) { closeMilestonePopover(); consumed = true; }
         if (selectionMenu) {
           selectionMenu = null;
           window.getSelection()?.removeAllRanges();
@@ -391,18 +595,31 @@
       if (editable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
-      if (e.key === "j" || e.key === "ArrowDown") {
+      // Selection menu: pick annotation type by letter.
+      if (selectionMenu) {
+        if (e.key === "c" || e.key === "C") { e.preventDefault(); commitSelection(null, "comment"); return; }
+        if (e.key === "q" || e.key === "Q") { e.preventDefault(); commitSelection(null, "question"); return; }
+        if (e.key === "p" || e.key === "P") { e.preventDefault(); commitSelection(null, "puzzle"); return; }
+        if (is_admin && (e.key === "m" || e.key === "M")) { e.preventDefault(); commitSelection(null, "milestone"); return; }
+      }
+
+      // [ / ] — navigate between annotation markers in reading order.
+      if (e.key === "]") { e.preventDefault(); navigateAnnotation(1); }
+      else if (e.key === "[") { e.preventDefault(); navigateAnnotation(-1); }
+
+      // J / K — page navigation (unchanged).
+      else if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
         scrollByPage(1);
       } else if (e.key === "k" || e.key === "ArrowUp") {
         e.preventDefault();
         scrollByPage(-1);
-      } else if (e.key === "n" || e.key === "N") {
-        if (selectionMenu) {
-          e.preventDefault();
-          commitSelection(e, "comment");
-        }
       }
+
+      // Keyboard zoom: + / = zoom in, - zoom out, 0 reset to 100%.
+      else if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomIn(); }
+      else if (e.key === "-") { e.preventDefault(); zoomOut(); }
+      else if (e.key === "0") { e.preventDefault(); zoomPct = 100; }
     };
 
     document.addEventListener("keydown", onKey);
@@ -722,20 +939,228 @@
     }
     zoomPct = Math.max(ZOOM_MIN, zoomPct - 25);
   }
+
+  // ── Navigation ───────────────────────────────────────────────────────────────
+
+  function posKey() {
+    if (!file_url) return null;
+    try {
+      return `studysync:pos:${new URL(file_url).pathname}`;
+    } catch {
+      return `studysync:pos:${file_url.split("?")[0]}`;
+    }
+  }
+
+  async function renderThumb(num) {
+    if (renderedThumbs.has(num)) return;
+    renderedThumbs.add(num);
+    const slot = pages[num - 1];
+    if (!slot?.thumbCanvas) { renderedThumbs.delete(num); return; }
+
+    try {
+      const page = await pdfDoc.getPage(num);
+      // Scale so the thumb fits in an 80px wide column.
+      const nativeW = firstPageSize?.width ?? 612;
+      const scale = 80 / nativeW;
+      const vp = page.getViewport({ scale });
+      const canvas = slot.thumbCanvas;
+      const ctx = canvas.getContext("2d");
+      canvas.width = vp.width;
+      canvas.height = vp.height;
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    } catch {
+      renderedThumbs.delete(num);
+    }
+  }
+
+  // ── Reading quality ──────────────────────────────────────────────────────────
+
+  const WIDTH_MODES = ["narrow", "medium", "wide"];
+  const VIEW_MODES = ["default", "sepia", "night"];
+
+  function cycleWidth() {
+    const idx = WIDTH_MODES.indexOf(widthMode);
+    widthMode = WIDTH_MODES[(idx + 1) % WIDTH_MODES.length];
+  }
+
+  function cycleViewMode() {
+    const idx = VIEW_MODES.indexOf(viewMode);
+    viewMode = VIEW_MODES[(idx + 1) % VIEW_MODES.length];
+  }
+
+  // ── Search ──────────────────────────────────────────────────────────────────
+
+  function openSearch() {
+    showSearch = true;
+  }
+
+  function closeSearch() {
+    showSearch = false;
+    searchQuery = "";
+    searchResults = [];
+    searchResultIndex = 0;
+  }
+
+  async function runSearch(query) {
+    if (!query.trim() || !pdfDoc) {
+      searchResults = [];
+      searchResultIndex = 0;
+      return;
+    }
+    isSearching = true;
+    const lower = query.toLowerCase();
+    const results = [];
+
+    for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+      let cached = pageTextCache.get(pageNum);
+      if (!cached) {
+        try {
+          const page = await pdfDoc.getPage(pageNum);
+          const vp = page.getViewport({ scale: 1 });
+          const tc = await page.getTextContent();
+          cached = { items: tc.items, vw: vp.width, vh: vp.height };
+          pageTextCache.set(pageNum, cached);
+        } catch {
+          continue;
+        }
+      }
+
+      const { items, vw, vh } = cached;
+      const highlights = [];
+
+      for (const item of items) {
+        if (!item.str || !item.str.toLowerCase().includes(lower)) continue;
+        // item.transform = [scaleX, shearY, shearX, scaleY, tx, ty]
+        // PDF y-axis is bottom-up; convert to top-down normalized coords.
+        const tx = item.transform[4];
+        const ty = item.transform[5];
+        const h = item.height > 0 ? item.height : 12;
+        const w = item.width > 0 ? item.width : 0;
+        if (w === 0) continue;
+        highlights.push({
+          x: tx / vw,
+          y: (vh - ty - h) / vh,
+          width: w / vw,
+          height: h / vh,
+        });
+      }
+
+      if (highlights.length > 0) results.push({ page: pageNum, highlights });
+    }
+
+    searchResults = results;
+    searchResultIndex = 0;
+    isSearching = false;
+
+    if (results.length > 0) scrollToPage(results[0].page);
+  }
+
+  function searchGoTo(idx) {
+    if (searchMode === "notes") {
+      if (annotationMatches.length === 0) return;
+      annotationMatchIndex = ((idx % annotationMatches.length) + annotationMatches.length) % annotationMatches.length;
+      const match = annotationMatches[annotationMatchIndex];
+      if (match) pushEvent("annotation_clicked", { id: match.id });
+    } else {
+      if (searchResults.length === 0) return;
+      searchResultIndex = ((idx % searchResults.length) + searchResults.length) % searchResults.length;
+      scrollToPage(searchResults[searchResultIndex].page);
+    }
+  }
+
+  // ── Annotation keyboard navigation ──────────────────────────────────────────
+
+  function navigateAnnotation(direction) {
+    if (sortedAnnotations.length === 0) return;
+    const currentIdx = active_annotation_id
+      ? sortedAnnotations.findIndex((a) => a.id === active_annotation_id)
+      : -1;
+    const nextIdx = Math.max(
+      0,
+      Math.min(sortedAnnotations.length - 1, currentIdx + direction),
+    );
+    const next = sortedAnnotations[nextIdx];
+    if (next && next.id !== active_annotation_id) {
+      pushEvent("annotation_clicked", { id: next.id });
+    }
+  }
 </script>
 
-<div class="reader" data-testid="pdf-canvas-root">
+<div
+  class="reader"
+  class:width-narrow={widthMode === "narrow"}
+  class:width-wide={widthMode === "wide"}
+  class:mode-sepia={viewMode === "sepia"}
+  class:mode-night={viewMode === "night"}
+  data-testid="pdf-canvas-root"
+>
   <header class="indicator">
+    <button
+      class="indicator-btn thumb-toggle"
+      class:is-active={showThumbs}
+      onclick={() => (showThumbs = !showThumbs)}
+      aria-label="Toggle page thumbnails"
+      title="Page thumbnails"
+    >
+      ≡
+    </button>
+
+    <span class="sep">·</span>
+
     <span class="num">{currentPage}</span>
     <span class="sep">/</span>
     <span class="num">{pages.length || total_pages}</span>
 
+    {#if currentChapter}
+      <span class="sep">·</span>
+      <span class="chapter-crumb" title={currentChapter.label}>{currentChapter.label}</span>
+    {/if}
+
+    {#if readingTimeLabel}
+      <span class="sep">·</span>
+      <span class="reading-time" title="Active reading time this session">{readingTimeLabel}</span>
+    {/if}
+
     <span class="spacer"></span>
+
+    <button
+      class="indicator-btn"
+      onclick={cycleWidth}
+      title="Column width: {widthMode} (click to cycle)"
+      aria-label="Cycle reading width"
+    >
+      {widthMode === "narrow" ? "NRW" : widthMode === "wide" ? "WDE" : "MED"}
+    </button>
+
+    <span class="sep">·</span>
+
+    <button
+      class="indicator-btn"
+      class:is-active={viewMode !== "default"}
+      onclick={cycleViewMode}
+      title="View mode: {viewMode} (click to cycle)"
+      aria-label="Cycle view mode"
+    >
+      {viewMode === "sepia" ? "SEPIA" : viewMode === "night" ? "NIGHT" : "DEF"}
+    </button>
+
+    <span class="sep">·</span>
+
+    <button
+      class="search-toggle"
+      class:is-active={showSearch}
+      onclick={openSearch}
+      aria-label="Search document (⌘F)"
+      title="Search (⌘F)"
+    >
+      ⌕
+    </button>
 
     <button
       class="zoom-btn"
       onclick={zoomOut}
       aria-label="Zoom out"
+      title="Zoom out (−)"
       disabled={zoomPct <= ZOOM_MIN}
     >
       −
@@ -745,11 +1170,94 @@
       class="zoom-btn"
       onclick={zoomIn}
       aria-label="Zoom in"
+      title="Zoom in (+)"
       disabled={zoomPct >= ZOOM_MAX}
     >
       +
     </button>
   </header>
+
+  {#if showSearch}
+    <div class="search-bar" role="search" aria-label="Search document">
+      <span class="search-icon" aria-hidden="true">⌕</span>
+      <input
+        bind:this={searchInputEl}
+        class="search-input"
+        type="text"
+        placeholder={searchMode === "doc" ? "Search text…" : "Search notes…"}
+        bind:value={searchQuery}
+        onkeydown={(e) => {
+          if (e.key === "Escape") { closeSearch(); e.preventDefault(); }
+          else if (e.key === "Enter") {
+            e.preventDefault();
+            const curIdx = searchMode === "doc" ? searchResultIndex : annotationMatchIndex;
+            searchGoTo(e.shiftKey ? curIdx - 1 : curIdx + 1);
+          }
+        }}
+        aria-label="Search term"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      {#if isSearching && searchMode === "doc"}
+        <span class="search-status num" aria-live="polite">…</span>
+      {:else if searchQuery.trim()}
+        <span class="search-status num" aria-live="polite">
+          {#if searchMode === "doc"}
+            {#if totalSearchHits === 0}no results{:else}{searchResultIndex + 1} / {searchResults.length}{/if}
+          {:else}
+            {#if annotationMatches.length === 0}no notes{:else}{annotationMatchIndex + 1} / {annotationMatches.length}{/if}
+          {/if}
+        </span>
+      {/if}
+      <button
+        class="search-nav"
+        onclick={() => searchGoTo(searchMode === "doc" ? searchResultIndex - 1 : annotationMatchIndex - 1)}
+        disabled={searchMode === "doc" ? searchResults.length === 0 : annotationMatches.length === 0}
+        aria-label="Previous match"
+        title="Previous (Shift+Enter)"
+      >↑</button>
+      <button
+        class="search-nav"
+        onclick={() => searchGoTo(searchMode === "doc" ? searchResultIndex + 1 : annotationMatchIndex + 1)}
+        disabled={searchMode === "doc" ? searchResults.length === 0 : annotationMatches.length === 0}
+        aria-label="Next match"
+        title="Next (Enter)"
+      >↓</button>
+      <span class="search-mode-tabs" role="group" aria-label="Search scope">
+        <button
+          class="search-mode-tab"
+          class:is-active={searchMode === "doc"}
+          onclick={() => (searchMode = "doc")}
+        >Text</button>
+        <button
+          class="search-mode-tab"
+          class:is-active={searchMode === "notes"}
+          onclick={() => (searchMode = "notes")}
+        >Notes</button>
+      </span>
+      <button class="search-close" onclick={closeSearch} aria-label="Close search">×</button>
+    </div>
+  {/if}
+
+  <div class="reader-body">
+    {#if showThumbs}
+      <div class="thumb-panel">
+        {#each pages as p (p.pageNum)}
+          <button
+            class="thumb-item"
+            class:is-current={p.pageNum === currentPage}
+            data-thumb-num={p.pageNum}
+            bind:this={p.thumbContainer}
+            onclick={() => scrollToPage(p.pageNum)}
+            aria-label="Jump to page {p.pageNum}"
+            title="Page {p.pageNum}"
+          >
+            <canvas bind:this={p.thumbCanvas}></canvas>
+            <span class="thumb-num num">{p.pageNum}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
 
   <div class="scroll" bind:this={scrollEl}>
     {#if loadError}
@@ -788,10 +1296,21 @@
               class:type-question={a.type === "question"}
               class:type-puzzle={a.type === "puzzle"}
               class:type-ai={a.type === "ai_response"}
+              class:is-hovered={hoveredAnnotationId === a.id}
               style:left="{a.rect.x * 100}%"
               style:top="{a.rect.y * 100}%"
               style:width="{a.rect.width * 100}%"
               style:height="{a.rect.height * 100}%"
+            ></div>
+          {/each}
+          {#each searchHighlightsByPage.get(p.pageNum) || [] as h, i (i)}
+            <div
+              class="search-highlight"
+              class:search-current={searchResults[searchResultIndex]?.page === p.pageNum}
+              style:left="{h.x * 100}%"
+              style:top="{h.y * 100}%"
+              style:width="{h.width * 100}%"
+              style:height="{h.height * 100}%"
             ></div>
           {/each}
         </div>
@@ -846,9 +1365,50 @@
             </button>
           {/each}
         </div>
+
+        <!-- Page presence: faint ambient badge showing other readers on this page -->
+        {#if pageReadersMap.has(p.pageNum)}
+          {@const pr = pageReadersMap.get(p.pageNum)}
+          <div class="page-presence" aria-label="{pr.count} {pr.count === 1 ? 'reader' : 'readers'} here">
+            <span class="presence-dot" aria-hidden="true"></span>
+            <span class="presence-label">{pr.count} {pr.count === 1 ? 'reader' : 'readers'} here</span>
+          </div>
+        {/if}
       </div>
     {/each}
   </div>
+
+  <!-- Annotation density heatmap — moved inside reader-body so it's scoped
+       to the scroll viewport rather than the full reader height. -->
+  {#if annotations.length > 0 && pages.length > 0}
+    <div class="density-heatmap" aria-hidden="true">
+      {#each annotations as a (a.id)}
+        <button
+          class="density-tick"
+          class:type-comment={a.type === "comment" || !a.type}
+          class:type-question={a.type === "question"}
+          class:type-puzzle={a.type === "puzzle"}
+          class:type-ai={a.type === "ai_response"}
+          style:top="{((a.page - 1) / Math.max(pages.length - 1, 1)) * 100}%"
+          onclick={() => scrollToPage(a.page)}
+          title="Annotation · page {a.page}"
+          tabindex="-1"
+        ></button>
+      {/each}
+      <div class="density-viewport" style:top="{heatmapViewportTop}%"></div>
+    </div>
+  {/if}
+
+  <!-- First-use hint moved inside reader-body so its absolute positioning
+       is scoped to the scroll area, not the full reader. -->
+  {#if annotations.length === 0 && pages.length > 0 && !selectionMenu}
+    <div class="first-use-hint" role="note" aria-label="Getting started hint">
+      <span class="hint-icon" aria-hidden="true">↑</span>
+      <p class="hint-text">Select any text to add your first annotation</p>
+    </div>
+  {/if}
+
+  </div><!-- end .reader-body -->
 
   {#if milestonePopover && popoverContext}
     <div
@@ -898,15 +1458,6 @@
     </div>
   {/if}
 
-  <!-- First-use hint: shown when no annotations exist and the PDF has loaded.
-       Fades in after a short delay so it doesn't flash during initial render. -->
-  {#if annotations.length === 0 && pages.length > 0 && !selectionMenu}
-    <div class="first-use-hint" role="note" aria-label="Getting started hint">
-      <span class="hint-icon" aria-hidden="true">↑</span>
-      <p class="hint-text">Select any text to add your first annotation</p>
-    </div>
-  {/if}
-
   {#if selectionMenu}
     <div
       class="selection-menu"
@@ -920,21 +1471,21 @@
         data-type="comment"
         onmousedown={(e) => commitSelection(e, "comment")}
       >
-        + Add comment
+        <span>+ Add comment</span><kbd>C</kbd>
       </button>
       <button
         class="selection-btn"
         data-type="question"
         onmousedown={(e) => commitSelection(e, "question")}
       >
-        + Ask question
+        <span>+ Ask question</span><kbd>Q</kbd>
       </button>
       <button
         class="selection-btn"
         data-type="puzzle"
         onmousedown={(e) => commitSelection(e, "puzzle")}
       >
-        + Create puzzle
+        <span>+ Create puzzle</span><kbd>P</kbd>
       </button>
       {#if is_admin}
         <button
@@ -942,7 +1493,7 @@
           data-type="milestone"
           onmousedown={(e) => commitSelection(e, "milestone")}
         >
-          + Place milestone
+          <span>+ Place milestone</span><kbd>M</kbd>
         </button>
       {/if}
     </div>
@@ -957,6 +1508,95 @@
     width: 100%;
     background: var(--color-paper);
     position: relative;
+  }
+
+  /* reader-body: flex row containing the optional thumb strip + scroll area.
+     position: relative anchors the heatmap and first-use-hint overlays. */
+  .reader-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ── Thumbnail strip ─────────────────────────────────────────────────────── */
+
+  .thumb-panel {
+    width: 100px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--color-paper-2);
+    border-right: 1px solid color-mix(in srgb, var(--color-ink-soft) 12%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.6rem 0.4rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-paper-2) transparent;
+  }
+
+  .thumb-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    border: 2px solid transparent;
+    border-radius: 2px;
+    padding: 0.15rem;
+    cursor: pointer;
+    background: transparent;
+    transition: border-color 0.1s ease;
+    width: 100%;
+  }
+
+  .thumb-item canvas {
+    display: block;
+    width: 80px;
+    height: auto;
+    background: white;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-ink-soft) 15%, transparent);
+  }
+
+  .thumb-item:hover {
+    border-color: color-mix(in srgb, var(--color-terracotta) 35%, transparent);
+  }
+
+  .thumb-item.is-current {
+    border-color: var(--color-terracotta);
+  }
+
+  .thumb-num {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--color-ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .thumb-item.is-current .thumb-num {
+    color: var(--color-terracotta);
+  }
+
+  /* ── Chapter breadcrumb ──────────────────────────────────────────────────── */
+
+  .chapter-crumb {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--color-ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    max-width: 18ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.75;
+  }
+
+  .thumb-toggle {
+    font-size: 0.9rem;
+    padding: 0.1rem 0.4rem;
   }
 
   .indicator {
@@ -1021,6 +1661,7 @@
 
   .scroll {
     flex: 1;
+    min-width: 0; /* prevent flex blowout when pages are wide */
     overflow-y: auto;
     overflow-x: auto;
     padding: 2rem 1rem;
@@ -1547,5 +2188,391 @@
     50% {
       background-position: 0 0;
     }
+  }
+
+  /* ── Reading quality: indicator action buttons ───────────────────────────── */
+
+  .indicator-btn {
+    border: none;
+    background: transparent;
+    color: var(--color-ink-soft);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    line-height: 1;
+    padding: 0.15rem 0.45rem;
+    border-radius: 2px;
+    transition:
+      color 0.1s ease,
+      background 0.1s ease;
+  }
+
+  .indicator-btn:hover,
+  .indicator-btn.is-active {
+    color: var(--color-terracotta);
+    background: var(--color-paper-2);
+  }
+
+  /* ── Reading quality: column width ───────────────────────────────────────── */
+
+  /* Narrow: center a constrained column, more margin on each side */
+  .reader.width-narrow .scroll {
+    align-items: center;
+  }
+
+  .reader.width-narrow .page {
+    max-width: 580px;
+  }
+
+  /* Wide: let pages use all available horizontal space */
+  .reader.width-wide .scroll {
+    align-items: flex-start;
+  }
+
+  /* Medium (default): current behavior — no override needed */
+
+  /* ── Reading quality: sepia mode ──────────────────────────────────────────── */
+
+  .reader.mode-sepia canvas {
+    filter: sepia(50%) brightness(0.97) contrast(0.96);
+    transition: filter 0.3s ease;
+  }
+
+  /* ── Reading quality: night mode ─────────────────────────────────────────── */
+
+  .reader.mode-night {
+    background: #1c1814;
+  }
+
+  .reader.mode-night .indicator,
+  .reader.mode-night .search-bar {
+    background: #1c1814;
+    border-color: #2d2824;
+    color: #8c8075;
+  }
+
+  .reader.mode-night .indicator .num,
+  .reader.mode-night .indicator .sep,
+  .reader.mode-night .indicator .zoom-percent {
+    color: #7a7068;
+  }
+
+  .reader.mode-night .scroll {
+    background: #1c1814;
+  }
+
+  .reader.mode-night .page {
+    box-shadow: 0 0 0 1px #2d2824;
+  }
+
+  /* Invert the PDF canvas; re-invert overlays so annotation colors stay true */
+  .reader.mode-night canvas {
+    filter: invert(0.9) hue-rotate(180deg) brightness(0.88);
+    transition: filter 0.3s ease;
+  }
+
+  /* Re-invert highlight and annotation overlays so they keep their original
+     hues — the page canvas is inverted under them, but we want the peach/
+     mint/lavender tints to look like themselves, not their complements. */
+  .reader.mode-night .highlight-layer {
+    filter: invert(0.9) hue-rotate(180deg);
+  }
+
+  .reader.mode-night .annotation-overlay {
+    filter: invert(0.9) hue-rotate(180deg);
+  }
+
+  /* ── Search toggle (indicator bar) ──────────────────────────────────────── */
+
+  .search-toggle {
+    border: none;
+    background: transparent;
+    color: var(--color-ink-soft);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0.15rem 0.45rem;
+    border-radius: 2px;
+    transition:
+      color 0.1s ease,
+      background 0.1s ease;
+    font-family: inherit;
+  }
+
+  .search-toggle:hover,
+  .search-toggle.is-active {
+    color: var(--color-terracotta);
+    background: var(--color-paper-2);
+  }
+
+  /* ── Search bar (sticky row below indicator) ─────────────────────────────── */
+
+  .search-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.4rem 1rem;
+    background: var(--color-paper);
+    border-bottom: 1px solid var(--color-paper-2);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+  }
+
+  .search-icon {
+    color: var(--color-ink-soft);
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+
+  .search-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--color-ink);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    outline: none;
+    padding: 0.15rem 0;
+    min-width: 0;
+  }
+
+  .search-input::placeholder {
+    color: color-mix(in srgb, var(--color-ink-soft) 50%, transparent);
+  }
+
+  .search-status {
+    color: var(--color-ink-soft);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .search-nav,
+  .search-close {
+    border: none;
+    background: transparent;
+    color: var(--color-ink-soft);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1;
+    padding: 0.2rem 0.4rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+    transition: color 0.1s ease, background 0.1s ease;
+  }
+
+  .search-nav:hover:not(:disabled),
+  .search-close:hover {
+    color: var(--color-terracotta);
+    background: var(--color-paper-2);
+  }
+
+  .search-nav:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* ── Search highlights in the highlight layer ────────────────────────────── */
+
+  .search-highlight {
+    position: absolute;
+    pointer-events: none;
+    background: color-mix(in srgb, #f5c842 45%, transparent);
+    border-bottom: 2px solid #d4a020;
+    opacity: 0.7;
+  }
+
+  .search-highlight.search-current {
+    background: color-mix(in srgb, #f5c842 70%, transparent);
+    border-bottom-color: var(--color-terracotta);
+    opacity: 1;
+  }
+
+  /* ── Annotation density heatmap ──────────────────────────────────────────── */
+
+  .density-heatmap {
+    position: absolute;
+    right: 0;
+    top: 0; /* .reader-body starts below the indicator, so no offset needed */
+    bottom: 0;
+    width: 7px;
+    pointer-events: none;
+    z-index: 4;
+  }
+
+  .density-tick {
+    position: absolute;
+    right: 1px;
+    transform: translateY(-50%);
+    width: 5px;
+    height: 3px;
+    border-radius: 1px;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    pointer-events: auto;
+    opacity: 0.65;
+    transition: opacity 0.1s ease, width 0.1s ease;
+  }
+
+  .density-tick:hover {
+    opacity: 1;
+    width: 7px;
+  }
+
+  .density-tick.type-comment { background: #d4a87a; }
+  .density-tick.type-question { background: #85b88e; }
+  .density-tick.type-puzzle { background: #a094b8; }
+  .density-tick.type-ai { background: #c9b86a; }
+
+  /* Viewport position indicator — a subtle bracket showing where the reader is */
+  .density-viewport {
+    position: absolute;
+    right: 0;
+    width: 2px;
+    height: 12px;
+    background: var(--color-terracotta);
+    opacity: 0.5;
+    border-radius: 1px;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  /* ── Reading timer ───────────────────────────────────────────────────────── */
+
+  .reading-time {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-ink-soft);
+    opacity: 0.65;
+    white-space: nowrap;
+  }
+
+  /* ── Annotation search mode tabs ─────────────────────────────────────────── */
+
+  .search-mode-tabs {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--color-paper-2);
+    border-radius: 2px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .search-mode-tab {
+    border: none;
+    background: transparent;
+    color: var(--color-ink-soft);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+    transition: background 0.1s ease, color 0.1s ease;
+  }
+
+  .search-mode-tab.is-active {
+    background: var(--color-terracotta);
+    color: var(--color-paper);
+  }
+
+  .search-mode-tab:not(.is-active):hover {
+    background: var(--color-paper-2);
+    color: var(--color-terracotta);
+  }
+
+  /* ── Highlight echoes — pulse when a marker is hovered ───────────────────── */
+
+  .annotation-highlight.is-hovered {
+    animation: highlight-echo 0.7s ease-out;
+  }
+
+  @keyframes highlight-echo {
+    0%   { opacity: 0.55; }
+    25%  { opacity: 0.9; transform: scale(1.015); }
+    100% { opacity: 0.55; transform: scale(1); }
+  }
+
+  /* ── Page presence badges ────────────────────────────────────────────────── */
+
+  .page-presence {
+    position: absolute;
+    bottom: 0.6rem;
+    right: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    pointer-events: none;
+    z-index: 3;
+    opacity: 0;
+    animation: presence-fade-in 0.4s ease 0.3s both;
+  }
+
+  @keyframes presence-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .presence-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--color-terracotta);
+    opacity: 0.6;
+    animation: presence-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes presence-pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50%       { opacity: 1;   transform: scale(1.2); }
+  }
+
+  .presence-label {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--color-terracotta);
+    opacity: 0.75;
+    white-space: nowrap;
+  }
+
+  /* ── Selection menu keyboard hints ──────────────────────────────────────── */
+
+  .selection-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .selection-btn kbd {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--color-ink-soft);
+    background: var(--color-paper-2);
+    border: 1px solid color-mix(in srgb, var(--color-ink-soft) 25%, transparent);
+    border-radius: 2px;
+    padding: 0.1rem 0.3rem;
+    line-height: 1.4;
+    flex-shrink: 0;
+    opacity: 0.8;
+  }
+
+  .selection-btn:hover kbd {
+    color: var(--color-terracotta);
+    border-color: color-mix(in srgb, var(--color-terracotta) 35%, transparent);
   }
 </style>
