@@ -26,67 +26,73 @@ defmodule StudysyncWeb.WorkspaceLive.Show do
 
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-3xl px-8 py-12">
-      <header class="border-b border-paper-2 pb-6 mb-10 flex items-baseline justify-between gap-6">
-        <div>
-          <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">Workspace</p>
-          <h1 class="font-display text-5xl text-ink mt-1">{@workspace.name}</h1>
+    <div class="min-h-screen bg-paper">
+      <header class="topbar">
+        <div class="flex-1 min-w-0">
+          <p class="section-label">Workspace</p>
+          <h1 class="font-display text-2xl text-ink leading-tight">{@workspace.name}</h1>
         </div>
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-3">
           <.link
             navigate={~p"/workspaces/#{@workspace.id}/library"}
-            class="font-mono text-xs uppercase tracking-widest text-ink-soft hover:text-terracotta"
+            class="btn btn-accent btn-sm"
           >
-            Library →
+            Open library
           </.link>
           <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
         </div>
       </header>
 
-      <section class="mb-12">
-        <h2 class="font-mono text-xs uppercase tracking-widest text-ink-soft mb-4">
-          Members · <span class="num">{length(@workspace.memberships)}</span>
-        </h2>
-
-        <ul class="divide-y divide-paper-2">
-          <li
-            :for={member <- @workspace.memberships}
-            id={"membership-#{member.id}"}
-            class="py-3 flex items-baseline justify-between"
-          >
-            <span class="font-serif text-ink">{member_label(member)}</span>
-            <span class="font-mono text-xs uppercase tracking-widest text-ink-soft">
-              {member.role} · {member.status}
+      <div class="mx-auto max-w-2xl px-6 py-10 space-y-6">
+        <%!-- Members card --%>
+        <section class="card">
+          <header class="card-head">
+            <span class="section-label">
+              Members · <span class="num">{length(@workspace.memberships)}</span>
             </span>
-          </li>
-        </ul>
-      </section>
+          </header>
+          <ul>
+            <li
+              :for={member <- @workspace.memberships}
+              id={"membership-#{member.id}"}
+              class="flex items-baseline justify-between px-5 py-3 border-b border-paper-2 last:border-b-0"
+            >
+              <span class="font-serif text-ink">{member_label(member)}</span>
+              <span class="mono-tag uppercase tracking-widest">
+                {member.role} · {member.status}
+              </span>
+            </li>
+          </ul>
+        </section>
 
-      <section :if={@admin?} class="border-t border-paper-2 pt-8">
-        <h2 class="font-mono text-xs uppercase tracking-widest text-ink-soft mb-4">
-          Invite a member
-        </h2>
-
-        <.form
-          for={@invite_form}
-          id="invite-form"
-          phx-change="validate_invite"
-          phx-submit="submit_invite"
-          class="flex gap-3 items-end"
-        >
-          <input type="hidden" name="form[workspace_id]" value={@workspace.id} />
-          <div class="flex-1">
-            <.input
-              field={@invite_form[:email]}
-              type="email"
-              label="Email"
-              placeholder="reader@example.com"
-              required
-            />
+        <%!-- Invite card (admin only) --%>
+        <section :if={@admin?} class="card">
+          <header class="card-head">
+            <span class="section-label">Invite a member</span>
+          </header>
+          <div class="card-pad">
+            <.form
+              for={@invite_form}
+              id="invite-form"
+              phx-change="validate_invite"
+              phx-submit="submit_invite"
+              class="flex gap-3 items-end"
+            >
+              <input type="hidden" name="form[workspace_id]" value={@workspace.id} />
+              <div class="flex-1">
+                <.input
+                  field={@invite_form[:email]}
+                  type="email"
+                  label="Email address"
+                  placeholder="reader@example.com"
+                  required
+                />
+              </div>
+              <button type="submit" class="btn btn-primary mb-2">Send invite</button>
+            </.form>
           </div>
-          <button type="submit" class="btn btn-primary mb-2">Send invite</button>
-        </.form>
-      </section>
+        </section>
+      </div>
     </div>
     """
   end

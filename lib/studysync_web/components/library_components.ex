@@ -26,7 +26,7 @@ defmodule StudysyncWeb.LibraryComponents do
     >
       <div class="min-w-0">
         <h3 class="font-display text-2xl text-ink truncate">{@resource.title}</h3>
-        <p class="font-mono text-xs uppercase tracking-widest text-ink-soft mt-2">
+        <p class="section-label mt-2">
           <span class="num">{@resource.page_count}</span>
           pages · {format_date(@resource.inserted_at)}<span :if={@uploader_email}> · {@uploader_email}</span>
         </p>
@@ -363,7 +363,7 @@ defmodule StudysyncWeb.LibraryComponents do
     </div>
 
     <div class="min-w-0 flex-1">
-      <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft truncate">
+      <p class="section-label truncate">
         <span>{@event.actor_email || "unknown"}</span>
         <span> · </span>
         <span class="text-terracotta">{action_label(@event.type)}</span>
@@ -373,7 +373,7 @@ defmodule StudysyncWeb.LibraryComponents do
         "{@event.snippet}"
       </p>
 
-      <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-2 truncate">
+      <p class="section-label mt-2 truncate">
         <span :if={@event.resource_title}>{@event.resource_title}</span>
         <span :if={@event.page_number}>
           <span :if={@event.resource_title}> · </span>
@@ -483,7 +483,7 @@ defmodule StudysyncWeb.LibraryComponents do
         <p class="font-serif text-base text-ink">
           {@chapter_label}
         </p>
-        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+        <p class="section-label">
           <span class="num">{@avg_progress_percent}</span>% AVG
           <span class="text-ink-soft/50 mx-1">·</span>
           <span class="num">{format_total_duration(@total_time_spent_seconds)}</span>
@@ -631,9 +631,7 @@ defmodule StudysyncWeb.LibraryComponents do
 
         <div class="min-w-0 flex-1">
           <p class="font-serif text-ink truncate">{@member.email || "unknown"}</p>
-          <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-            {reader_status(@member.progress_percent)}
-          </p>
+          <p class="section-label">{reader_status(@member.progress_percent)}</p>
         </div>
 
         <p class="font-display text-2xl text-ink num shrink-0">
@@ -649,7 +647,7 @@ defmodule StudysyncWeb.LibraryComponents do
         </div>
       </div>
 
-      <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-3">
+      <p class="section-label mt-3">
         {format_duration(Map.get(@member, :time_spent_seconds, 0))} on the page
       </p>
     </article>
@@ -674,6 +672,91 @@ defmodule StudysyncWeb.LibraryComponents do
   end
 
   defp format_duration(_), do: "—"
+
+  @doc """
+  Compact table of all readers for a resource on the library dashboard.
+
+  Replaces the card grid for scalability — one row per member, columns for
+  email, status, progress bar + %, and time on page. The current user's row
+  gets a teal left-border accent.
+  """
+  attr :members, :list, required: true
+  attr :current_user_id, :any, default: nil
+  attr :class, :string, default: nil
+
+  def reader_table(assigns) do
+    ~H"""
+    <table class={["table w-full", @class]}>
+      <thead>
+        <tr>
+          <th>Reader</th>
+          <th>Status</th>
+          <th class="w-48">Progress</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          :for={member <- @members}
+          class={
+            if(@current_user_id && member.user_id == @current_user_id,
+              do: "border-l-2 border-l-terracotta",
+              else: ""
+            )
+          }
+        >
+          <td>
+            <div class="flex items-center gap-2.5">
+              <div
+                aria-hidden="true"
+                class={[
+                  "shrink-0 w-6 h-6 rounded-full flex items-center justify-center font-mono text-[9px] uppercase tracking-widest",
+                  if(@current_user_id && member.user_id == @current_user_id,
+                    do: "bg-terracotta text-paper",
+                    else: "bg-paper-2 text-ink-soft"
+                  )
+                ]}
+              >
+                {member_initials(member.email)}
+              </div>
+              <span class={[
+                "text-sm truncate max-w-[200px]",
+                if(@current_user_id && member.user_id == @current_user_id,
+                  do: "font-medium text-ink",
+                  else: "text-ink"
+                )
+              ]}>
+                {member.email || "unknown"}
+              </span>
+            </div>
+          </td>
+          <td>
+            <span class="section-label">{reader_status(member.progress_percent)}</span>
+          </td>
+          <td>
+            <div class="flex items-center gap-2.5">
+              <span class="section-label num w-8 text-right text-ink shrink-0">
+                {member.progress_percent}%
+              </span>
+              <div class="flex-1 h-1 rounded-full overflow-hidden" style="background: var(--ds-line);">
+                <div
+                  class="h-full bg-terracotta"
+                  style={"width: #{member.progress_percent}%;"}
+                >
+                </div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="section-label">
+              {format_duration(Map.get(member, :time_spent_seconds, 0))}
+            </span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
+  end
 
   @doc """
   Milestone panel (Slice 12) — lists admin-placed checkpoints for the current
@@ -702,15 +785,14 @@ defmodule StudysyncWeb.LibraryComponents do
     ~H"""
     <section class={["border border-paper-2 bg-paper px-4 py-3", @class]}>
       <header class="flex items-baseline justify-between mb-3">
-        <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+        <p class="section-label">
           Milestones · <span class="num">{length(@milestones)}</span>
         </p>
-        <%!-- Completion progress — shows the reader how far along they are --%>
         <p class={[
-          "font-mono text-[10px] uppercase tracking-widest num",
+          "section-label num",
           if(@user_completed == length(@milestones) and length(@milestones) > 0,
             do: "text-terracotta",
-            else: "text-ink-soft"
+            else: ""
           )
         ]}>
           <span class="num">{@user_completed}</span>/<span class="num">{length(@milestones)}</span> you
@@ -734,13 +816,13 @@ defmodule StudysyncWeb.LibraryComponents do
             <%!-- Checkmark when this user has stamped this milestone --%>
             <span
               :if={user_stamped?(milestone, @current_user_id)}
-              class="font-mono text-[9px] uppercase tracking-widest text-terracotta shrink-0"
+              class="section-label text-terracotta shrink-0"
               aria-label="You've stamped this milestone"
             >
               ✓
             </span>
           </div>
-          <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mt-1">
+          <p class="section-label mt-1">
             P. <span class="num">{milestone.page_number}</span>
             <span class="text-terracotta">
               · <span class="num">{stamp_count(milestone)}</span>/<span class="num">{@total_readers}</span> readers
@@ -804,7 +886,7 @@ defmodule StudysyncWeb.LibraryComponents do
           {presence_initials(email)}
         </li>
       </ul>
-      <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft whitespace-nowrap">
+      <p class="section-label whitespace-nowrap">
         here now · <span class="num">{length(@readers)}</span>
       </p>
     </div>

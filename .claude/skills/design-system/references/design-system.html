@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=1280"/>
+  <title>PostOpGuard · Design System</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="./styles.css"/>
+  <link rel="stylesheet" href="./nurse.css"/>
+
+  <style>
+    body { padding: 0; }
+
+    .ds-shell {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 100vh;
+    }
+
+    .ds-side {
+      background: var(--surface);
+      border-right: 1px solid var(--line);
+      padding: 22px 18px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+    .ds-side .brand {
+      display: flex; align-items: center; gap: 10px;
+      padding-bottom: 16px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .ds-side h4 {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 18px 0 6px;
+      font-weight: 500;
+      font-family: var(--font-mono);
+    }
+    .ds-nav { display: flex; flex-direction: column; }
+    .ds-nav a {
+      display: block;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--ink-2);
+      text-decoration: none;
+    }
+    .ds-nav a:hover { background: var(--surface-2); color: var(--ink); }
+
+    .ds-main {
+      padding: 32px 44px 80px;
+      max-width: 1080px;
+    }
+    .ds-hero {
+      display: flex; align-items: flex-end; justify-content: space-between;
+      gap: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 32px;
+    }
+    .ds-hero h1 {
+      font-size: 36px; font-weight: 600; letter-spacing: -0.02em;
+      margin: 6px 0;
+    }
+    .ds-hero p {
+      color: var(--muted); font-size: 14px; line-height: 1.55;
+      margin: 0; max-width: 520px;
+    }
+
+    section.ds-block { margin: 40px 0 56px; scroll-margin-top: 24px; }
+    section.ds-block > h2 {
+      font-size: 22px; font-weight: 600;
+      letter-spacing: -0.015em;
+      margin: 0 0 4px;
+    }
+    section.ds-block > .ds-sub {
+      color: var(--muted); font-size: 13.5px;
+      margin: 0 0 22px;
+      max-width: 640px;
+    }
+
+    .ds-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .ds-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+    .ds-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .ds-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+    .ds-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .ds-card .ds-swatch {
+      height: 88px;
+      border-bottom: 1px solid var(--line);
+    }
+    .ds-card .ds-meta {
+      padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .ds-name { font-size: 13px; font-weight: 500; }
+    .ds-value {
+      font-family: var(--font-mono); font-size: 11.5px; color: var(--muted);
+    }
+
+    .ds-stage {
+      background: var(--surface);
+      border: 1px dashed var(--line-strong);
+      border-radius: 10px;
+      padding: 22px;
+      display: flex; flex-wrap: wrap; gap: 14px;
+      align-items: center;
+    }
+    .ds-stage.col { flex-direction: column; align-items: stretch; }
+    .ds-stage.center { justify-content: center; }
+
+    .ds-row {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 24px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+      align-items: center;
+    }
+    .ds-row:last-child { border-bottom: 0; }
+    .ds-row-label { color: var(--muted); font-size: 12.5px; }
+    .ds-row-label code {
+      font-family: var(--font-mono); font-size: 11.5px;
+      background: var(--surface-2);
+      padding: 1px 5px; border-radius: 3px;
+    }
+
+    .ds-code {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-family: var(--font-mono); font-size: 11.5px;
+      color: var(--ink-2);
+      white-space: pre-wrap;
+      overflow: auto;
+    }
+
+    /* Type spec */
+    .type-row {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 24px;
+      padding: 16px 0;
+      border-bottom: 1px dashed var(--line);
+      align-items: baseline;
+    }
+    .type-row:last-child { border-bottom: 0; }
+    .type-label {
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+
+    /* Brand demo */
+    .brand-demo {
+      display: flex; align-items: center; gap: 14px;
+      padding: 28px 32px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .brand-demo .lockup {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .brand-demo .gradient-rule {
+      flex: 1; height: 4px; border-radius: 2px;
+      background: linear-gradient(90deg, #3387C7 0%, #3FB0A8 55%, #7BC58A 100%);
+      margin: 0 24px;
+    }
+    .brand-stops {
+      display: flex; gap: 8px;
+    }
+    .brand-stop {
+      width: 80px;
+    }
+    .brand-stop .sw {
+      height: 56px; border-radius: 6px;
+      border: 1px solid var(--line);
+    }
+    .brand-stop .lbl {
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* Status sample */
+    .status-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+    }
+    .status-tile {
+      border: 1px solid;
+      border-radius: 9px;
+      padding: 14px 16px;
+    }
+    .status-tile.critical { background: var(--critical-tint); border-color: var(--critical-edge); }
+    .status-tile.warning  { background: var(--warning-tint);  border-color: var(--warning-edge); }
+    .status-tile.stable   { background: var(--stable-tint);   border-color: var(--stable-edge); }
+    .status-tile.muted    { background: var(--surface-2);     border-color: var(--line); }
+    .status-tile h5 {
+      margin: 6px 0 4px;
+      font-size: 13px; font-weight: 600;
+    }
+    .status-tile p {
+      margin: 0; font-size: 12px; color: var(--ink-2);
+      line-height: 1.45;
+    }
+
+    .pad-pad {
+      background: var(--surface-3);
+      border: 1px dashed var(--line-strong);
+      display: inline-block;
+    }
+
+    .recipe-art {
+      width: 100%;
+      height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface);
+      display: grid;
+      overflow: hidden;
+    }
+    .recipe-art .topbar-tile {
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--line);
+      grid-column: 1 / -1;
+      height: 28px;
+    }
+    .recipe-art .panel {
+      background: var(--surface-3);
+      border-right: 1px solid var(--line);
+    }
+    .recipe-art .panel:last-child { border-right: 0; }
+    .recipe-art .filled { background: var(--accent-tint); }
+    .recipe-art .filled-2 { background: var(--surface-2); }
+
+    .recipe-art.a { grid-template-columns: 1fr 2.2fr; grid-template-rows: 28px 1fr; }
+    .recipe-art.a .topbar-tile { grid-row: 1; }
+    .recipe-art.a .col-q { grid-row: 2; grid-column: 1; }
+    .recipe-art.a .col-d { grid-row: 2; grid-column: 2; padding: 12px; display: grid; gap: 8px; grid-auto-rows: minmax(28px, auto); }
+    .recipe-art.a .col-d > div { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+
+    .recipe-art.b { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 28px 1fr 60px; }
+    .recipe-art.b .topbar-tile { grid-row: 1; }
+    .recipe-art.b .col1 { grid-row: 2; grid-column: 1; background: var(--surface-2); border-right: 1px solid var(--line); }
+    .recipe-art.b .col2 { grid-row: 2; grid-column: 2; background: var(--surface); border-right: 1px solid var(--line); padding: 12px; }
+    .recipe-art.b .col2 .lines { display: flex; flex-direction: column; gap: 5px; }
+    .recipe-art.b .col2 .lines span { display: block; height: 6px; background: var(--surface-2); border-radius: 2px; }
+    .recipe-art.b .col2 .lines span:nth-child(odd) { width: 80%; }
+    .recipe-art.b .col2 .lines span:nth-child(3n) { width: 60%; }
+    .recipe-art.b .col3 { grid-row: 2; grid-column: 3; background: var(--surface); padding: 12px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); white-space: pre-wrap; line-height: 1.5; }
+    .recipe-art.b .sim { grid-row: 3; grid-column: 1 / -1; background: var(--surface-2); border-top: 1px solid var(--line); padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+    .recipe-art.b .sim .bar { flex: 1; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--stable), var(--warning), var(--critical)); }
+
+    .recipe-art.c { background: var(--surface); position: relative; display: grid; grid-template-rows: 28px 1fr; }
+    .recipe-art.c .topbar-tile { grid-row: 1; }
+    .recipe-art.c .stage { grid-row: 2; display: grid; place-items: center; }
+    .recipe-art.c .orb-mini {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, oklch(75% 0.08 185), oklch(50% 0.10 185));
+      box-shadow: 0 0 0 8px var(--accent-tint);
+    }
+
+    .ds-foot {
+      margin-top: 60px;
+      padding-top: 24px;
+      border-top: 1px solid var(--line);
+      color: var(--muted); font-size: 12.5px;
+    }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="../shared.jsx"></script>
+  <script type="text/babel">
+    function mountAll() {
+      const root = (id) => document.getElementById(id);
+
+      // Brand lockup
+      ReactDOM.createRoot(root("ds-brand-lockup")).render(
+        <>
+          <BrandMark size={48}/>
+          <BrandWordmark size={28}/>
+        </>
+      );
+
+      // Side nav brand
+      ReactDOM.createRoot(root("ds-side-brand")).render(
+        <>
+          <BrandMark size={22}/>
+          <BrandWordmark size={14}/>
+        </>
+      );
+
+      // Icon gallery
+      const iconNames = ["Heart","Drop","Pill","Thermo","Mic","Phone","Bell","Search","ArrowUp","ArrowDown","Dash","Play","Check","X","Lock","Sparkle","Wave","Bolt","Stack"];
+      ReactDOM.createRoot(root("ds-icons")).render(
+        <>
+          {iconNames.map(n => {
+            const I = Icon[n];
+            return (
+              <div key={n} className="ds-card" style={{flex: "0 0 88px"}}>
+                <div className="ds-swatch" style={{display:"grid", placeItems:"center", height:64, color:"var(--ink)"}}>
+                  <I size={20}/>
+                </div>
+                <div className="ds-meta">
+                  <span className="ds-value">Icon.{n}</span>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      );
+
+      // Sparklines
+      ReactDOM.createRoot(root("ds-sparks")).render(
+        <>
+          <Sparkline values={[78,82,86,90,94,98,102]} color="var(--critical)" w={120} h={28}/>
+          <Sparkline values={[97,97,96,96,95,96,95]} color="var(--ink-2)" w={120} h={28}/>
+          <Sparkline values={[154,150,152,148,142,130,118]} color="var(--accent)" w={120} h={28}/>
+          <Sparkline values={[2,3,4,5,6,6,6]} color="var(--warning)" w={120} h={28}/>
+        </>
+      );
+
+      // Status pills + trend
+      ReactDOM.createRoot(root("ds-pills")).render(
+        <>
+          <StatusPill status="critical"/>
+          <StatusPill status="warning"/>
+          <StatusPill status="stable"/>
+          <StatusPill status="pending"/>
+          <StatusPill status="accent">DVT_Risk_Hip_v2</StatusPill>
+          <StatusPill status="critical">Missed AM</StatusPill>
+        </>
+      );
+
+      // Trends
+      ReactDOM.createRoot(root("ds-trends")).render(
+        <>
+          <div style={{display:"inline-flex", alignItems:"center", gap:6}}><Trend dir="up"/> <span style={{fontSize:13}}>Trending worse</span></div>
+          <div style={{display:"inline-flex", alignItems:"center", gap:6}}><Trend dir="flat"/> <span style={{fontSize:13}}>No change</span></div>
+          <div style={{display:"inline-flex", alignItems:"center", gap:6}}><Trend dir="down"/> <span style={{fontSize:13}}>Trending better</span></div>
+        </>
+      );
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", mountAll);
+    } else {
+      mountAll();
+    }
+  </script>
+</head>
+<body>
+  <div class="ds-shell">
+    <aside class="ds-side">
+      <div class="brand" id="ds-side-brand"></div>
+      <h4>Foundations</h4>
+      <nav class="ds-nav">
+        <a href="#principles">Principles</a>
+        <a href="#brand">Brand mark</a>
+        <a href="#color">Color tokens</a>
+        <a href="#status">Status palette</a>
+        <a href="#type">Typography</a>
+        <a href="#spacing">Spacing & radius</a>
+        <a href="#density">Density</a>
+      </nav>
+      <h4>Components</h4>
+      <nav class="ds-nav">
+        <a href="#icons">Icons</a>
+        <a href="#pills">Pills & trend</a>
+        <a href="#buttons">Buttons</a>
+        <a href="#cards">Cards</a>
+        <a href="#audit">Audit tags</a>
+        <a href="#code">Code blocks</a>
+        <a href="#sparks">Sparklines</a>
+        <a href="#vitals">Vital tile</a>
+        <a href="#trace">Logic trace row</a>
+      </nav>
+      <h4>Patterns</h4>
+      <nav class="ds-nav">
+        <a href="#recipe-a">A · List + detail</a>
+        <a href="#recipe-b">B · Side-by-side authoring</a>
+        <a href="#recipe-c">C · Voice surface</a>
+        <a href="#avoid">Patterns to avoid</a>
+      </nav>
+      <h4>Handoff</h4>
+      <nav class="ds-nav">
+        <a href="DESIGN_SYSTEM.md">DESIGN_SYSTEM.md ↗</a>
+        <a href="../PostOpGuard.html">Live console ↗</a>
+      </nav>
+    </aside>
+
+    <main class="ds-main">
+      <div class="ds-hero">
+        <div>
+          <div class="section-label">Design System · v1.0</div>
+          <h1>PostOpGuard</h1>
+          <p>Foundations, components, and patterns for the autonomous post-operative recovery safeguard. Tokens are CSS custom properties — never hardcode values. Components live in <code style="font-family:var(--font-mono);font-size:12.5px;background:var(--surface-2);padding:1px 4px;border-radius:3px">shared.jsx</code>.</p>
+        </div>
+        <div id="ds-brand-lockup" style="display:flex;align-items:center;gap:14px"></div>
+      </div>
+
+      <!-- PRINCIPLES -->
+      <section class="ds-block" id="principles">
+        <h2>Principles</h2>
+        <p class="ds-sub">Six rules that hold every screen together.</p>
+        <div class="ds-grid cols-3">
+          <div class="ds-card" style="padding:18px"><div class="section-label">01</div><h3 style="margin:6px 0 6px;font-size:14px">Trust over flash</h3><p style="margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.5">Stripe-clean, EMR-clear. The brand gradient appears only on the mark.</p></div>
+          <div class="ds-card" style="padding:18px"><div class="section-label">02</div><h3 style="margin:6px 0 6px;font-size:14px">Glass box for decisions</h3><p style="margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.5">LLM extracts. Lua decides. Always show the trace.</p></div>
+          <div class="ds-card" style="padding:18px"><div class="section-label">03</div><h3 style="margin:6px 0 6px;font-size:14px">Calm under load</h3><p style="margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.5">Red = page on-call. Amber = watch. Green = no action. Don't overuse red.</p></div>
+          <div class="ds-card" style="padding:18px"><div class="section-label">04</div><h3 style="margin:6px 0 6px;font-size:14px">Audio is canonical</h3><p style="margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.5">Waveform + prosody lead. Transcript supports.</p></div>
+          <div class="ds-card" style="padding:18px"><div class="section-label">05</div><h3 style="margin:6px 0 6px;font-size:14px">Voice-first for patients</h3><p style="margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.5">One primary action. 44px+ targets. Status orb communicates phase.</p></div>
+          <div class="ds-card" style="padding:18px"><div class="section-label">06</div><h3 style="margin:6px 0 6px;font-size:14px">Tag the provenance</h3><p style="margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.5">Every event names its source: Oban, LLM, Lua, System.</p></div>
+        </div>
+      </section>
+
+      <!-- BRAND -->
+      <section class="ds-block" id="brand">
+        <h2>Brand mark</h2>
+        <p class="ds-sub">Shield + medical cross + ECG wave. Use the React component, never redraw.</p>
+        <div class="brand-demo">
+          <div class="lockup" id="ds-brand-demo-lockup"></div>
+          <div class="gradient-rule"></div>
+          <div class="brand-stops">
+            <div class="brand-stop"><div class="sw" style="background:#3387C7"></div><div class="lbl">#3387C7</div></div>
+            <div class="brand-stop"><div class="sw" style="background:#3FB0A8"></div><div class="lbl">#3FB0A8</div></div>
+            <div class="brand-stop"><div class="sw" style="background:#7BC58A"></div><div class="lbl">#7BC58A</div></div>
+          </div>
+        </div>
+        <div class="ds-code" style="margin-top:10px">import: &lt;BrandMark size={26}/&gt; · &lt;BrandWordmark size={15}/&gt;  (from shared.jsx)</div>
+      </section>
+
+      <!-- COLOR -->
+      <section class="ds-block" id="color">
+        <h2>Color tokens</h2>
+        <p class="ds-sub">All neutrals are cool-tinted. Never use a saturation higher than 0.02 for whites and blacks. Reference tokens — never hex.</p>
+        <h4 style="font-size:11px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;font-family:var(--font-mono);margin:18px 0 10px">Surfaces</h4>
+        <div class="ds-grid cols-4">
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--bg)"></div><div class="ds-meta"><span class="ds-name">App background</span><span class="ds-value">--bg</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--surface)"></div><div class="ds-meta"><span class="ds-name">Surface</span><span class="ds-value">--surface</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--surface-2)"></div><div class="ds-meta"><span class="ds-name">Surface · hover</span><span class="ds-value">--surface-2</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--surface-3)"></div><div class="ds-meta"><span class="ds-name">Surface · active</span><span class="ds-value">--surface-3</span></div></div>
+        </div>
+        <h4 style="font-size:11px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;font-family:var(--font-mono);margin:22px 0 10px">Ink (text)</h4>
+        <div class="ds-grid cols-4">
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--ink)"></div><div class="ds-meta"><span class="ds-name">Primary text</span><span class="ds-value">--ink</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--ink-2)"></div><div class="ds-meta"><span class="ds-name">Secondary text</span><span class="ds-value">--ink-2</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--muted)"></div><div class="ds-meta"><span class="ds-name">Muted / labels</span><span class="ds-value">--muted</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--faint)"></div><div class="ds-meta"><span class="ds-name">Faint / disabled</span><span class="ds-value">--faint</span></div></div>
+        </div>
+        <h4 style="font-size:11px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;font-family:var(--font-mono);margin:22px 0 10px">Accent · sage-teal</h4>
+        <div class="ds-grid cols-4">
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--accent)"></div><div class="ds-meta"><span class="ds-name">Accent</span><span class="ds-value">--accent</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--accent-2)"></div><div class="ds-meta"><span class="ds-name">Accent · hover</span><span class="ds-value">--accent-2</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--accent-tint)"></div><div class="ds-meta"><span class="ds-name">Accent · tint</span><span class="ds-value">--accent-tint</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--accent-edge)"></div><div class="ds-meta"><span class="ds-name">Accent · edge</span><span class="ds-value">--accent-edge</span></div></div>
+        </div>
+        <h4 style="font-size:11px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;font-family:var(--font-mono);margin:22px 0 10px">Lines</h4>
+        <div class="ds-grid cols-4">
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--line)"></div><div class="ds-meta"><span class="ds-name">Default border</span><span class="ds-value">--line</span></div></div>
+          <div class="ds-card"><div class="ds-swatch" style="background:var(--line-strong)"></div><div class="ds-meta"><span class="ds-name">Strong border</span><span class="ds-value">--line-strong</span></div></div>
+        </div>
+      </section>
+
+      <!-- STATUS -->
+      <section class="ds-block" id="status">
+        <h2>Status palette</h2>
+        <p class="ds-sub">Stoplight, used only for clinical state. Toggle <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">data-tone="soft"</code> on <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">&lt;html&gt;</code> for the desaturated alternative.</p>
+        <div class="status-grid">
+          <div class="status-tile critical">
+            <span class="pill critical"><span class="pill-dot"></span>Critical</span>
+            <h5>Page on-call now</h5>
+            <p>Confirmed red-flag symptom or threshold breach.</p>
+          </div>
+          <div class="status-tile warning">
+            <span class="pill warning"><span class="pill-dot"></span>Trending</span>
+            <h5>Watch this</h5>
+            <p>Trending toward critical. Schedule a follow-up.</p>
+          </div>
+          <div class="status-tile stable">
+            <span class="pill stable"><span class="pill-dot"></span>Stable</span>
+            <h5>No action</h5>
+            <p>On track. Continue routine monitoring.</p>
+          </div>
+          <div class="status-tile muted">
+            <span class="pill muted"><span class="pill-dot"></span>Awaiting</span>
+            <h5>Missed check-in</h5>
+            <p>Awaiting data. Retry scheduled via Oban.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- TYPOGRAPHY -->
+      <section class="ds-block" id="type">
+        <h2>Typography</h2>
+        <p class="ds-sub">Two families. IBM Plex Sans for UI; IBM Plex Mono for data, code, audit, timestamps, IDs.</p>
+        <div class="type-row">
+          <span class="type-label">Page title · 26 / 600</span>
+          <div style="font-size:26px;font-weight:600;letter-spacing:-0.02em">Good morning, Nancy</div>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Patient name · 26 / 600</span>
+          <div style="font-size:26px;font-weight:600;letter-spacing:-0.02em">Paul Hendricks</div>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Big metric · 24 mono / 600</span>
+          <div style="font-size:24px;font-weight:600;font-family:var(--font-mono);letter-spacing:-0.02em">102</div>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Vital value · 22 / 600</span>
+          <div style="font-size:22px;font-weight:600;letter-spacing:-0.01em">99.8<span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:3px">°F</span></div>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Card title · 13.5 / 500</span>
+          <div style="font-size:13.5px;font-weight:500">This morning's check-in</div>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Body · 13.5 / 400</span>
+          <div style="font-size:13.5px">I've noted the calf warmth — that's important. I'm paging Dr. Smith's on-call team.</div>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Section label · 11 mono / 500 / 0.08em / UPPER</span>
+          <div class="section-label">Vitals · self-reported</div>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Mono tag · 10.5 mono</span>
+          <div class="mono-tag">whisper-large-v3 · 16kHz mono</div>
+        </div>
+        <div class="type-row">
+          <span class="type-label">Caption · 11 mono</span>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted)">audit #A-48201-0517-001</div>
+        </div>
+      </section>
+
+      <!-- SPACING -->
+      <section class="ds-block" id="spacing">
+        <h2>Spacing & radius</h2>
+        <p class="ds-sub">No global scale. Sizes are CSS-variable-driven so the density tweak can shift them. When you need a raw value, snap to 4 / 6 / 8 / 10 / 12 / 14 / 16 / 18 / 22 / 28 / 60.</p>
+        <div class="ds-grid cols-4">
+          {[4,6,8,10,12,14,16,18,22,28,44,60].map(n => (
+            <div class="ds-card" style="padding:14px"><div class="pad-pad" style={"width:"+n+"px;height:"+n+"px"}></div><div class="ds-meta" style="padding:8px 0 0"><span class="ds-value">{n}px</span></div></div>
+          ))}
+        </div>
+        <h4 style="font-size:11px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;font-family:var(--font-mono);margin:24px 0 10px">Radius scale</h4>
+        <div style="display:flex;gap:18px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:36px;height:36px;background:var(--surface-3);border:1px solid var(--line-strong);border-radius:4px"></div><span class="ds-value">4 · tags</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:36px;height:36px;background:var(--surface-3);border:1px solid var(--line-strong);border-radius:6px"></div><span class="ds-value">6 · buttons</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:36px;height:36px;background:var(--surface-3);border:1px solid var(--line-strong);border-radius:7px"></div><span class="ds-value">7 · inputs</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:36px;height:36px;background:var(--surface-3);border:1px solid var(--line-strong);border-radius:10px"></div><span class="ds-value">10 · cards</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><div style="width:60px;height:24px;background:var(--surface-3);border:1px solid var(--line-strong);border-radius:999px"></div><span class="ds-value">999 · pills</span></div>
+        </div>
+      </section>
+
+      <!-- DENSITY -->
+      <section class="ds-block" id="density">
+        <h2>Density</h2>
+        <p class="ds-sub">Toggle <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">data-density="compact"</code> on <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">&lt;html&gt;</code>. New screens must consume these variables, never hardcode.</p>
+        <div class="ds-code">--row-py     comfortable 14 · compact  8
+--row-px     comfortable 18 · compact 14
+--cell-gap   comfortable 16 · compact 10
+--card-pad   comfortable 22 · compact 16
+--base-fs    comfortable 14 · compact 13
+--label-fs   comfortable 11 · compact 10</div>
+      </section>
+
+      <!-- ICONS -->
+      <section class="ds-block" id="icons">
+        <h2>Icons</h2>
+        <p class="ds-sub">Extend <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">Icon</code> in <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">shared.jsx</code>. Stroke-only, 1.6px weight, currentColor.</p>
+        <div id="ds-icons" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+      </section>
+
+      <!-- PILLS -->
+      <section class="ds-block" id="pills">
+        <h2>Pills & trend</h2>
+        <p class="ds-sub">Universal small-state primitive. Mono uppercase, dot optional. Trend arrows: up is bad (red), down is good (green).</p>
+        <div class="ds-stage" id="ds-pills"></div>
+        <div class="ds-stage" id="ds-trends" style="margin-top:12px;gap:24px"></div>
+      </section>
+
+      <!-- BUTTONS -->
+      <section class="ds-block" id="buttons">
+        <h2>Buttons</h2>
+        <p class="ds-sub">Max one <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">btn-primary</code> per card. <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">btn-danger</code> is reserved for irreversible clinical pages.</p>
+        <div class="ds-stage">
+          <button class="btn">Default</button>
+          <button class="btn btn-primary">Primary action</button>
+          <button class="btn btn-danger">Page on-call</button>
+          <button class="btn btn-ghost">Ghost</button>
+          <button class="btn btn-sm">Small</button>
+          <button class="btn btn-ghost btn-sm">Ghost small</button>
+        </div>
+      </section>
+
+      <!-- CARDS -->
+      <section class="ds-block" id="cards">
+        <h2>Cards</h2>
+        <p class="ds-sub">1px border, 10px radius, no shadows. Header row carries the label and metadata mono-tag; body has no global padding so cells can sit edge-to-edge.</p>
+        <section class="card" style="max-width:520px">
+          <header class="card-head">
+            <div>
+              <div class="section-label">Vitals · self-reported</div>
+            </div>
+            <span class="mono-tag">updated 08:42</span>
+          </header>
+          <div style="padding:16px;display:grid;gap:8px">
+            <div style="display:flex;justify-content:space-between"><span style="font-size:13px;color:var(--muted)">Heart rate</span><span style="font-family:var(--font-mono);font-size:13px">102 bpm</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-size:13px;color:var(--muted)">Temperature</span><span style="font-family:var(--font-mono);font-size:13px">99.8 °F</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="font-size:13px;color:var(--muted)">SpO₂</span><span style="font-family:var(--font-mono);font-size:13px">95 %</span></div>
+          </div>
+        </section>
+      </section>
+
+      <!-- AUDIT -->
+      <section class="ds-block" id="audit">
+        <h2>Audit tags</h2>
+        <p class="ds-sub">Color-coded by source. Mono, 10px, uppercase. Use for any event-stream surface — provenance is non-negotiable.</p>
+        <div class="ds-stage">
+          <span class="audit-tag lua">Lua</span>
+          <span class="audit-tag llm">LLM</span>
+          <span class="audit-tag oban">Oban</span>
+          <span class="audit-tag sys">System</span>
+        </div>
+        <ol class="audit-list" style="margin-top:14px;border:1px solid var(--line);border-radius:9px;background:var(--surface)">
+          <li><span class="audit-t mono">08:42:48</span><span class="audit-tag sys">System</span><span class="audit-text">Alert paged to Dr. Smith on-call (SMS + EMR inbox)</span></li>
+          <li><span class="audit-t mono">08:42:43</span><span class="audit-tag lua">Lua</span><span class="audit-text">Protocol fired: DVT_Risk_Hip_v2 · score 1.00 ≥ 0.75</span></li>
+          <li><span class="audit-t mono">08:42:24</span><span class="audit-tag llm">LLM</span><span class="audit-text">5 variables extracted from transcript</span></li>
+          <li><span class="audit-t mono">08:42:00</span><span class="audit-tag oban">Oban</span><span class="audit-text">Voice check-in initiated by job #check_daily_08</span></li>
+        </ol>
+      </section>
+
+      <!-- CODE -->
+      <section class="ds-block" id="code">
+        <h2>Code blocks</h2>
+        <p class="ds-sub">Hand-written highlighter, 12px Plex Mono, line-height 1.55. Token classes: <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">.c-comment</code>, <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">.c-string</code>, <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">.c-kw</code>, <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">.c-num</code>, <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">.c-type</code>.</p>
+        <pre class="code" style="border:1px solid var(--line);border-radius:8px;background:var(--surface)"><span class="c-comment">-- DVT_Risk_Hip_v2 · live since 2026-04-29</span>
+<span class="c-kw">function</span> evaluate(patient, today)
+  <span class="c-kw">local</span> warmth      = today.calf_warmth == <span class="c-kw">true</span>
+  <span class="c-kw">local</span> risk        = <span class="c-num">0</span>
+  <span class="c-kw">if</span> warmth <span class="c-kw">then</span> risk = risk + <span class="c-num">0.35</span> <span class="c-kw">end</span>
+
+  <span class="c-kw">if</span> risk &gt;= <span class="c-num">0.75</span> <span class="c-kw">then</span>
+    <span class="c-kw">return</span> <span class="c-type">Alert</span>.new {
+      severity = <span class="c-string">"critical"</span>,
+      sla_min  = <span class="c-num">30</span>
+    }
+  <span class="c-kw">end</span>
+<span class="c-kw">end</span></pre>
+      </section>
+
+      <!-- SPARKLINES -->
+      <section class="ds-block" id="sparks">
+        <h2>Sparklines</h2>
+        <p class="ds-sub">Polyline only — no fills, no labels. Color follows the data state (critical / warning / accent / ink).</p>
+        <div class="ds-stage" id="ds-sparks" style="gap:32px"></div>
+      </section>
+
+      <!-- VITAL TILE -->
+      <section class="ds-block" id="vitals">
+        <h2>Vital tile</h2>
+        <p class="ds-sub">Three-up grid with 1px hairlines between. Color the value via <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">data-state</code>, not inline style.</p>
+        <section class="card" style="max-width:720px">
+          <div class="vitals-grid">
+            <div class="vital" data-state="warning">
+              <div class="vital-top"><span class="vital-icon">♥</span><span class="vital-label">Heart rate</span></div>
+              <div class="vital-value-row"><div class="vital-value">102<span class="vital-unit">bpm</span></div></div>
+              <div class="vital-range">target 60–100 bpm</div>
+            </div>
+            <div class="vital" data-state="stable">
+              <div class="vital-top"><span class="vital-icon">◐</span><span class="vital-label">SpO₂</span></div>
+              <div class="vital-value-row"><div class="vital-value">95<span class="vital-unit">%</span></div></div>
+              <div class="vital-range">target 94–100 %</div>
+            </div>
+            <div class="vital" data-state="warning">
+              <div class="vital-top"><span class="vital-icon">🌡</span><span class="vital-label">Temperature</span></div>
+              <div class="vital-value-row"><div class="vital-value">99.8<span class="vital-unit">°F</span></div></div>
+              <div class="vital-range">target 97–99.5 °F</div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <!-- LOGIC TRACE -->
+      <section class="ds-block" id="trace">
+        <h2>Logic trace row</h2>
+        <p class="ds-sub">The "step + value + weight" pattern used in the logic inspector and simulator. Tick fills accent when fired; row tints accent-tint on fired.</p>
+        <div style="display:flex;flex-direction:column;gap:6px;max-width:520px">
+          <div class="trace-row" data-fired="true"><span class="tick on">✓</span><span class="trace-label">calf_warmth == true</span><span class="mono trace-val">true</span><span class="mono trace-w">+0.35</span></div>
+          <div class="trace-row" data-fired="true"><span class="tick on">✓</span><span class="trace-label">calf_tenderness == true</span><span class="mono trace-val">true</span><span class="mono trace-w">+0.30</span></div>
+          <div class="trace-row" data-fired="true"><span class="tick on">✓</span><span class="trace-label">pain ≥ 4</span><span class="mono trace-val">6</span><span class="mono trace-w">+0.15</span></div>
+          <div class="trace-row" data-fired="false"><span class="tick">·</span><span class="trace-label">resting HR &lt; 70</span><span class="mono trace-val">102</span><span class="mono trace-w">—</span></div>
+        </div>
+      </section>
+
+      <!-- RECIPES -->
+      <section class="ds-block" id="recipe-a">
+        <h2>Recipe A · List + detail</h2>
+        <p class="ds-sub">When showing many entities that triage to one focused entity. Hybrid queue + always-open detail. <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">grid-template-columns: 380px 1fr</code>.</p>
+        <div class="recipe-art a">
+          <div class="topbar-tile"></div>
+          <div class="panel col-q"></div>
+          <div class="col-d">
+            <div style="height:40px;background:var(--critical-tint);border-color:var(--critical-edge) !important"></div>
+            <div style="height:60px"></div>
+            <div style="height:80px"></div>
+            <div style="height:40px"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="ds-block" id="recipe-b">
+        <h2>Recipe B · Side-by-side authoring</h2>
+        <p class="ds-sub">Whenever a user authors something that compiles to a deterministic artefact. Natural language → generated artefact → live simulator.</p>
+        <div class="recipe-art b">
+          <div class="topbar-tile"></div>
+          <div class="col1"></div>
+          <div class="col2"><div class="lines"><span></span><span></span><span></span><span></span><span></span></div></div>
+          <div class="col3">function evaluate(p)
+  local risk = 0
+  if warmth then ...
+  if risk >= 0.75 then
+    return Alert.new {</div>
+          <div class="sim"><span class="mono" style="font-size:11px;color:var(--muted)">simulation</span><div class="bar"></div></div>
+        </div>
+      </section>
+
+      <section class="ds-block" id="recipe-c">
+        <h2>Recipe C · Voice surface</h2>
+        <p class="ds-sub">Patient-facing. Centered orb above all else; one large prompt; single primary action; HIPAA footer.</p>
+        <div class="recipe-art c">
+          <div class="topbar-tile" style="background:var(--surface);border-bottom:0"></div>
+          <div class="stage">
+            <div class="orb-mini"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- AVOID -->
+      <section class="ds-block" id="avoid">
+        <h2>Patterns to avoid</h2>
+        <p class="ds-sub">If a screen reaches for any of these, push back.</p>
+        <div class="ds-grid cols-2" style="grid-template-columns: 1fr 1fr">
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ Gradient backgrounds</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">Brand gradient is for the mark only. Never page, card, or button.</p></div>
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ Drop shadows on cards</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">1px hairline borders only.</p></div>
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ Decorative icons</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">Every icon must mean something clinical or navigational.</p></div>
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ Sentence-case pills</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">Pills are mono uppercase short codes. For lowercase metadata use <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">.mono-tag</code>.</p></div>
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ Emoji</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">Use icons from <code style="font-family:var(--font-mono);font-size:11.5px;background:var(--surface-2);padding:1px 5px;border-radius:3px">Icon</code>. Period.</p></div>
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ Inventing accent colors</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">Extend tokens or reach for the existing accent.</p></div>
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ AI as the decider</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">Always frame as: LLM extracts → Lua decides.</p></div>
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ Transcript without audio</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">Audio is the clinical source-of-truth.</p></div>
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ Animations on data</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">Sparkline lines do not animate; numbers don't count up.</p></div>
+          <div class="ds-card" style="padding:14px 16px"><span class="ds-name" style="color:var(--critical)">✕ Toasts and modals</span><p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-2);line-height:1.45">Use the inline alert banner pattern instead.</p></div>
+        </div>
+      </section>
+
+      <div class="ds-foot">
+        Full handoff document → <a href="DESIGN_SYSTEM.md" style="color:var(--accent)">DESIGN_SYSTEM.md</a> · Live console → <a href="../PostOpGuard.html" style="color:var(--accent)">PostOpGuard.html</a>
+      </div>
+    </main>
+  </div>
+
+  <script type="text/babel">
+    // Mount the brand demo lockup once primitives load
+    function _mountBrandDemo() {
+      const el = document.getElementById("ds-brand-demo-lockup");
+      if (!el || typeof BrandMark === "undefined") return;
+      ReactDOM.createRoot(el).render(
+        <>
+          <BrandMark size={56}/>
+          <BrandWordmark size={32}/>
+        </>
+      );
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", _mountBrandDemo);
+    } else {
+      _mountBrandDemo();
+    }
+  </script>
+</body>
+</html>

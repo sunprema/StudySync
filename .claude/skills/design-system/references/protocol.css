@@ -1,0 +1,230 @@
+/* Protocol Builder */
+.protocol {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.protocol-side {
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  min-height: 0;
+}
+.proto-list {
+  padding: 4px 8px;
+  display: flex; flex-direction: column; gap: 2px;
+  flex: 1 1 auto;
+  overflow: auto;
+}
+.proto-item {
+  text-align: left; background: none;
+  border: 1px solid transparent;
+  padding: 10px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.proto-item:hover { background: var(--surface-2); }
+.proto-item.active { background: var(--surface-3); border-color: var(--line-strong); }
+.proto-item-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.proto-item-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-width: 0;
+}
+.proto-item-top > .proto-item-name { flex: 1 1 auto; }
+.proto-item-sub { font-size: 11px; color: var(--muted); }
+.proto-item-meta {
+  display: flex; gap: 6px;
+  font-size: 11px; color: var(--muted);
+}
+.proto-new {
+  margin: 10px 12px 14px;
+  justify-content: center;
+}
+
+.protocol-main {
+  display: flex; flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+.protocol-header {
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 24px;
+  background: var(--surface);
+}
+.protocol-subhead {
+  display: flex; gap: 8px; align-items: center; margin-top: 8px;
+}
+.protocol-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+.protocol-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 14px;
+  padding: 18px 28px 60px;
+}
+.pc-nl { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; }
+.pc-lua { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; }
+.pc-sim { grid-column: 1 / -1; grid-row: 2; }
+
+.nl-input {
+  border: 0;
+  outline: 0;
+  resize: none;
+  padding: 16px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--surface);
+  min-height: 280px;
+  flex: 1;
+  letter-spacing: -0.005em;
+}
+.nl-help {
+  border-top: 1px solid var(--line);
+  padding: 10px 14px;
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+  background: var(--surface-2);
+}
+.chip {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.chip:hover { background: var(--surface-3); }
+
+.pc-lua .code {
+  flex: 1; min-height: 280px; max-height: 380px;
+  border-bottom: 1px solid var(--line);
+}
+.diff-strip {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+}
+.diff-add { color: oklch(45% 0.13 150); }
+.diff-rem { color: var(--critical); }
+.diff-ctx { color: var(--muted); }
+
+.sim-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 0;
+}
+.sim-inputs {
+  padding: 14px 16px;
+  border-right: 1px solid var(--line);
+  background: var(--surface-2);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.sim-input { display: flex; flex-direction: column; gap: 6px; }
+.sim-input label {
+  font-size: 11.5px; color: var(--muted);
+  display: flex; justify-content: space-between;
+}
+.sim-val { color: var(--ink); }
+.sim-input input[type="range"] {
+  width: 100%;
+  appearance: none; -webkit-appearance: none;
+  height: 4px; background: var(--surface-3); border-radius: 2px;
+  outline: 0;
+}
+.sim-input input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); cursor: pointer;
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--accent-edge);
+}
+.seg {
+  display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+  background: var(--surface);
+}
+.seg button {
+  background: none; border: 0;
+  padding: 4px 10px; font-size: 11.5px; cursor: pointer;
+  font-family: var(--font-mono); color: var(--muted);
+}
+.seg button.on { background: var(--accent-tint); color: var(--accent); }
+
+.sim-result {
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.sim-score {
+  display: flex; align-items: baseline; gap: 8px;
+}
+.sim-score-num {
+  font-size: 36px; font-weight: 600; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.sim-result[data-sev="critical"] .sim-score-num { color: var(--critical); }
+.sim-result[data-sev="warning"]  .sim-score-num { color: var(--warning); }
+.sim-result[data-sev="stable"]   .sim-score-num { color: var(--stable); }
+.sim-score-label {
+  font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.sim-meter-track {
+  position: relative;
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: 4px;
+  overflow: visible;
+}
+.sim-meter-fill {
+  height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, var(--stable), var(--warning) 50%, var(--critical) 90%);
+  transition: width 240ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.sim-meter-mark {
+  position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--warning);
+}
+.sim-meter-mark.crit { background: var(--critical); }
+.sim-meter-ticks {
+  display: flex; justify-content: space-between;
+  font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+  margin-top: 6px;
+}
+.sim-outcome {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: 7px;
+}
+.sim-result[data-sev="critical"] .sim-outcome {
+  background: var(--critical-tint);
+}
+.sim-outcome-text { font-size: 13px; color: var(--ink); }
+.sim-trace {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px;
+  font-size: 11.5px;
+}
+.sim-trace-row {
+  display: grid; grid-template-columns: 16px 1fr auto;
+  gap: 6px; align-items: center;
+}
+.sim-trace-label { color: var(--ink-2); }
+.sim-trace-weight { color: var(--accent); font-weight: 600; }
+.sim-trace-row .tick {
+  background: var(--surface-2); color: var(--muted);
+}
+.sim-trace-row .tick.on { background: var(--accent); color: white; }
+
+.sim-actions {
+  display: flex; align-items: center;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}

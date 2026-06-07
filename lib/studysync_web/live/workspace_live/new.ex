@@ -9,33 +9,44 @@ defmodule StudysyncWeb.WorkspaceLive.New do
 
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-xl px-8 py-12">
-      <header class="border-b border-paper-2 pb-6 mb-10">
-        <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">New</p>
-        <h1 class="font-display text-5xl text-ink mt-1">A new workspace</h1>
+    <div class="min-h-screen bg-paper">
+      <header class="topbar">
+        <a href="/" class="font-display text-xl text-ink"><em>Study</em>Sync</a>
+        <div class="ml-auto flex items-center gap-3">
+          <.link navigate={~p"/workspaces"} class="btn btn-ghost btn-sm">Workspaces</.link>
+        </div>
       </header>
 
-      <.form
-        for={@form}
-        id="workspace-form"
-        phx-change="validate"
-        phx-submit="submit"
-        class="space-y-6"
-      >
-        <.input
-          field={@form[:name]}
-          type="text"
-          label="Name"
-          placeholder="The Reading Group"
-          autofocus
-          required
-        />
+      <div class="mx-auto max-w-md px-6 py-12">
+        <p class="section-label mb-1">Create</p>
+        <h1 class="font-display text-4xl text-ink mb-8">A new workspace</h1>
 
-        <div class="flex gap-3">
-          <button type="submit" class="btn btn-primary">Create workspace</button>
-          <.link navigate={~p"/workspaces"} class="btn btn-ghost">Cancel</.link>
+        <div class="card">
+          <div class="card-pad">
+            <.form
+              for={@form}
+              id="workspace-form"
+              phx-change="validate"
+              phx-submit="submit"
+              class="space-y-5"
+            >
+              <.input
+                field={@form[:name]}
+                type="text"
+                label="Workspace name"
+                placeholder="The Reading Group"
+                autofocus
+                required
+              />
+
+              <div class="flex gap-3 pt-2">
+                <button type="submit" class="btn btn-primary">Create workspace</button>
+                <.link navigate={~p"/workspaces"} class="btn btn-ghost">Cancel</.link>
+              </div>
+            </.form>
+          </div>
         </div>
-      </.form>
+      </div>
     </div>
     """
   end

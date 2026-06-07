@@ -75,150 +75,180 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
 
   def render(assigns) do
     ~H"""
-    <div class="flex min-h-screen w-full bg-paper text-ink">
-      <main class="flex-1 min-w-0 px-8 py-12">
-        <div class="mx-auto max-w-4xl">
-          <header class="border-b border-paper-2 pb-6 mb-10 flex items-baseline justify-between gap-4">
-            <div>
-              <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">
-                <.link navigate={~p"/workspaces/#{@workspace.id}"} class="hover:text-terracotta">
-                  {@workspace.name}
-                </.link>
-                <span> · Library</span>
-              </p>
-              <h1 class="font-display text-5xl text-ink mt-1">Library</h1>
-            </div>
-            <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
-          </header>
+    <div class="flex min-h-screen w-full bg-paper text-ink flex-col">
+      <header class="topbar">
+        <div class="flex-1 min-w-0">
+          <p class="section-label">
+            <.link
+              navigate={~p"/workspaces/#{@workspace.id}"}
+              class="hover:text-terracotta transition-colors"
+            >
+              {@workspace.name}
+            </.link>
+            <span class="text-ink-soft/40 mx-1">·</span>
+            Library
+          </p>
+          <h1 class="font-display text-2xl text-ink leading-tight">Library</h1>
+        </div>
+        <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
+      </header>
 
-          <%!-- Empty shelf: the uploader is the page. --%>
-          <section :if={not @has_resources?} class="text-center py-12">
-            <h2 class="font-display text-5xl text-ink">An empty shelf.</h2>
-            <p class="font-serif italic text-ink-soft mt-4 max-w-md mx-auto">
-              No PDFs yet — your group reads together. Drop a book in to begin.
-            </p>
-            <div class="max-w-xl mx-auto mt-10 text-left">
-              <.upload_form
-                uploads={@uploads}
-                title={@title}
-                upload_error={@upload_error}
-                show_close?={false}
-              />
-            </div>
-          </section>
+      <div class="flex flex-1 min-h-0">
+        <main class="flex-1 min-w-0 px-8 py-10 overflow-y-auto">
+          <div class="mx-auto max-w-3xl">
+            <%!-- Empty shelf: the uploader is the page. --%>
+            <section :if={not @has_resources?}>
+              <div class="text-center py-16">
+                <h2 class="font-display text-4xl text-ink">An empty shelf.</h2>
+                <p class="font-serif italic text-ink-soft mt-3 max-w-md mx-auto text-sm leading-relaxed">
+                  No PDFs yet — your group reads together. Drop a book in to begin.
+                </p>
+              </div>
+              <div class="max-w-xl mx-auto">
+                <div class="card">
+                  <div class="card-pad">
+                    <.upload_form
+                      uploads={@uploads}
+                      title={@title}
+                      upload_error={@upload_error}
+                      show_close?={false}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
 
-          <%!-- Books shelf: the books are the page; uploader is a quiet add-action. --%>
-          <section :if={@has_resources?}>
-            <div class="flex items-baseline justify-between border-b border-paper-2 pb-3 mb-8">
-              <h2 class="font-mono text-xs uppercase tracking-widest text-ink-soft">
-                Books
-              </h2>
-              <button
-                :if={not @show_uploader}
-                type="button"
-                phx-click="open_uploader"
-                class="font-mono text-xs uppercase tracking-widest text-terracotta hover:underline"
-              >
-                + Place a new book
-              </button>
-            </div>
+            <%!-- Books shelf --%>
+            <section :if={@has_resources?}>
+              <div class="flex items-center justify-between mb-6">
+                <p class="section-label">Books</p>
+                <button
+                  :if={not @show_uploader}
+                  type="button"
+                  phx-click="open_uploader"
+                  class="btn btn-ghost btn-sm"
+                >
+                  + Add book
+                </button>
+              </div>
 
-            <div :if={@show_uploader} class="mb-12">
-              <.upload_form
-                uploads={@uploads}
-                title={@title}
-                upload_error={@upload_error}
-                show_close?={true}
-              />
-            </div>
+              <div :if={@show_uploader} class="card mb-8">
+                <header class="card-head">
+                  <span class="section-label">Add a book</span>
+                </header>
+                <div class="card-pad">
+                  <.upload_form
+                    uploads={@uploads}
+                    title={@title}
+                    upload_error={@upload_error}
+                    show_close?={true}
+                  />
+                </div>
+              </div>
 
-            <div id="resources" phx-update="stream" class="space-y-12">
-              <article
-                :for={{dom_id, resource} <- @streams.resources}
-                id={dom_id}
-                class="border-b border-paper-2 pb-12 last:border-b-0"
-              >
-                <header class="flex items-baseline justify-between gap-6 mb-4">
-                  <div class="min-w-0">
+              <div id="resources" phx-update="stream" class="space-y-6">
+                <article
+                  :for={{dom_id, resource} <- @streams.resources}
+                  id={dom_id}
+                  class="card"
+                >
+                  <header class="card-head">
+                    <div class="flex items-baseline justify-between gap-4 w-full">
+                      <div class="min-w-0">
+                        <.link
+                          navigate={~p"/workspaces/#{@workspace.id}/library/#{resource.id}"}
+                          class="hover:text-terracotta transition-colors"
+                        >
+                          <h3 class="font-display text-2xl text-ink truncate">{resource.title}</h3>
+                        </.link>
+                        <p class="section-label mt-1">
+                          <span class="num">{resource.page_count}</span>
+                          pages · <span class="num">{length(@members)}</span>
+                          {if length(@members) == 1, do: "reader", else: "readers"} · {format_date(
+                            resource.inserted_at
+                          )}<span :if={uploader_email(resource)}>
+                            · {uploader_email(resource)}</span>
+                        </p>
+                      </div>
+                      <div class="shrink-0 text-right">
+                        <p class="section-label">Group avg</p>
+                        <p class="font-display text-3xl text-terracotta num leading-none">
+                          {resource.avg_progress_percent || 0}%
+                        </p>
+                      </div>
+                    </div>
+                  </header>
+
+                  <div class="card-pad border-b border-paper-2">
+                    <.progress_timeline
+                      members={members_for(@progress_matrix, resource.id)}
+                      current_user_id={@current_user.id}
+                      milestones={milestones_for(@milestones_by_resource, resource.id)}
+                      total_pages={resource.page_count}
+                      avg_progress_percent={resource.avg_progress_percent || 0}
+                      total_time_spent_seconds={total_time_spent(@progress_matrix, resource.id)}
+                    />
+                  </div>
+
+                  <div
+                    :if={members_for(@progress_matrix, resource.id) != []}
+                    id={"readers-#{resource.id}"}
+                    class="border-t border-paper-2"
+                    style="display: none"
+                  >
+                    <.reader_table
+                      members={members_for(@progress_matrix, resource.id)}
+                      current_user_id={@current_user.id}
+                    />
+                  </div>
+
+                  <div class="px-5 py-3 flex items-center justify-between">
+                    <button
+                      :if={members_for(@progress_matrix, resource.id) != []}
+                      type="button"
+                      phx-click={JS.toggle(to: "#readers-#{resource.id}")}
+                      class="btn btn-ghost btn-sm"
+                    >
+                      Group progress ·
+                      <span class="num">{length(members_for(@progress_matrix, resource.id))}</span>
+                      readers
+                    </button>
+                    <span :if={members_for(@progress_matrix, resource.id) == []}></span>
                     <.link
                       navigate={~p"/workspaces/#{@workspace.id}/library/#{resource.id}"}
-                      class="hover:text-terracotta transition-colors"
+                      class="btn btn-accent btn-sm"
                     >
-                      <h3 class="font-display text-4xl text-ink truncate">{resource.title}</h3>
+                      Open book
                     </.link>
-                    <p class="font-mono text-xs uppercase tracking-widest text-ink-soft mt-2">
-                      <span class="num">{resource.page_count}</span>
-                      pages · <span class="num">{length(@members)}</span>
-                      {if length(@members) == 1, do: "reader", else: "readers"} · started {format_date(
-                        resource.inserted_at
-                      )}<span :if={uploader_email(resource)}>
-                        · {uploader_email(resource)}</span>
-                    </p>
                   </div>
-                  <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft shrink-0">
-                    Group avg
-                    <span class="font-display text-3xl text-terracotta num ml-1">
-                      {resource.avg_progress_percent || 0}%
-                    </span>
-                  </p>
-                </header>
+                </article>
+              </div>
+            </section>
+          </div>
+        </main>
 
-                <div class="px-6 pt-5 pb-7 bg-paper-2/40 rounded">
-                  <.progress_timeline
-                    members={members_for(@progress_matrix, resource.id)}
-                    current_user_id={@current_user.id}
-                    milestones={milestones_for(@milestones_by_resource, resource.id)}
-                    total_pages={resource.page_count}
-                    avg_progress_percent={resource.avg_progress_percent || 0}
-                    total_time_spent_seconds={total_time_spent(@progress_matrix, resource.id)}
-                  />
-                </div>
+        <aside class="hidden lg:flex w-[320px] shrink-0 bg-paper-2 border-l border-paper-2 flex-col">
+          <header class="card-head">
+            <span class="section-label flex-1">Recent</span>
+            <span class="mono-tag text-terracotta border border-terracotta/40">Live</span>
+          </header>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-6">
-                  <.reader_card
-                    :for={member <- members_for(@progress_matrix, resource.id)}
-                    member={member}
-                    is_self={member.user_id == @current_user.id}
-                  />
-                </div>
+          <div class="flex-1 overflow-y-auto px-4 py-2">
+            <div id="activity-feed" phx-update="stream">
+              <p
+                id="activity-feed-empty"
+                class="hidden only:block font-serif italic text-ink-soft py-6 text-sm text-center"
+              >
+                Nothing yet. Highlight or reply on a page to fill the rail.
+              </p>
 
-                <div class="mt-6">
-                  <.link
-                    navigate={~p"/workspaces/#{@workspace.id}/library/#{resource.id}"}
-                    class="font-mono text-xs uppercase tracking-widest text-terracotta hover:underline"
-                  >
-                    Open book →
-                  </.link>
-                </div>
-              </article>
-            </div>
-          </section>
-        </div>
-      </main>
-
-      <aside class="hidden lg:flex w-[340px] shrink-0 bg-paper-2 border-l border-paper-2/60 flex-col">
-        <header class="px-6 py-5 border-b border-paper-2/60 flex items-baseline justify-between">
-          <h2 class="font-display italic text-3xl text-ink">Recent</h2>
-          <span class="font-mono text-[10px] uppercase tracking-widest text-terracotta border border-terracotta/40 px-2 py-px rounded-sm">
-            Live
-          </span>
-        </header>
-
-        <div class="flex-1 overflow-y-auto px-6 py-2">
-          <div id="activity-feed" phx-update="stream">
-            <p
-              id="activity-feed-empty"
-              class="hidden only:block font-serif italic text-ink-soft py-4"
-            >
-              Nothing yet. Highlight or reply on a page to fill the rail.
-            </p>
-
-            <div :for={{dom_id, event} <- @streams.activity_events} id={dom_id}>
-              <.activity_item event={event} workspace_id={@workspace.id} />
+              <div :for={{dom_id, event} <- @streams.activity_events} id={dom_id}>
+                <.activity_item event={event} workspace_id={@workspace.id} />
+              </div>
             </div>
           </div>
-        </div>
-      </aside>
+        </aside>
+      </div>
     </div>
     """
   end
@@ -260,6 +290,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
      |> assign(:title, "")
      |> assign(:upload_error, nil)}
   end
+
 
   def handle_event("upload", %{"title" => title}, socket) do
     actor = socket.assigns.current_user
@@ -597,9 +628,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
         ]}
       >
         <p class="font-display text-3xl text-ink">Drop a PDF here</p>
-        <p class="font-mono text-xs uppercase tracking-widest text-ink-soft mt-3">
-          or click to browse · 50 MB max
-        </p>
+        <p class="section-label mt-3">or click to browse · 50 MB max</p>
         <.live_file_input upload={@uploads.pdf} class="sr-only" />
       </label>
 
@@ -613,7 +642,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
             type="button"
             phx-click="cancel_upload"
             phx-value-ref={entry.ref}
-            class="font-mono text-[10px] uppercase tracking-widest text-ink-soft hover:text-terracotta shrink-0"
+            class="btn btn-ghost btn-sm shrink-0"
           >
             remove
           </button>
@@ -627,12 +656,7 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
           {entry.progress}%
         </progress>
         <div>
-          <label
-            for="resource-title"
-            class="font-mono text-xs uppercase tracking-widest text-ink-soft"
-          >
-            Title
-          </label>
+          <label for="resource-title" class="section-label">Title</label>
           <input
             id="resource-title"
             name="title"
@@ -645,29 +669,25 @@ defmodule StudysyncWeb.WorkspaceLive.Library do
         </div>
       </div>
 
-      <div :for={err <- upload_errors(@uploads.pdf)} class="text-error font-mono text-xs">
+      <div :for={err <- upload_errors(@uploads.pdf)} class="section-label text-terracotta">
         {error_to_string(err)}
       </div>
-      <p :if={@upload_error} class="text-error font-mono text-xs">{@upload_error}</p>
+      <p :if={@upload_error} class="section-label text-terracotta">{@upload_error}</p>
 
-      <div :if={@uploads.pdf.entries != []} class="flex items-center gap-4">
+      <div :if={@uploads.pdf.entries != []} class="flex items-center gap-3">
         <button type="submit" class="btn btn-primary">Place on shelf</button>
         <button
           :if={@show_close?}
           type="button"
           phx-click="close_uploader"
-          class="font-mono text-xs uppercase tracking-widest text-ink-soft hover:text-terracotta"
+          class="btn btn-ghost btn-sm"
         >
           Cancel
         </button>
       </div>
 
       <div :if={@show_close? and @uploads.pdf.entries == []}>
-        <button
-          type="button"
-          phx-click="close_uploader"
-          class="font-mono text-xs uppercase tracking-widest text-ink-soft hover:text-terracotta"
-        >
+        <button type="button" phx-click="close_uploader" class="btn btn-ghost btn-sm">
           Cancel
         </button>
       </div>

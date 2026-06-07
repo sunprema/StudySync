@@ -193,28 +193,24 @@ defmodule StudysyncWeb.PdfLive.Show do
       <.chapter_rail chapters={@chapters} />
 
       <main class="flex-1 min-w-0 flex flex-col relative">
-        <header class="flex items-baseline justify-between border-b border-paper-2 px-8 py-4 gap-4">
-          <div class="min-w-0">
-            <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+        <header class="topbar">
+          <div class="flex-1 min-w-0">
+            <p class="section-label">
               <.link
                 navigate={~p"/workspaces/#{@workspace_id}/library"}
-                class="hover:text-terracotta"
+                class="hover:text-terracotta transition-colors"
               >
                 Library
               </.link>
-              <span> ·  Reader</span>
+              <span class="text-ink-soft/40 mx-1">·</span>
+              Reader
             </p>
-            <h1 class="font-display text-3xl text-ink truncate mt-1">{@resource.title}</h1>
+            <h1 class="font-display text-2xl text-ink truncate leading-tight">{@resource.title}</h1>
           </div>
 
           <div class="flex items-center gap-4 shrink-0">
-            <%!-- Peer presence cluster — ambient "who else is here" signal --%>
             <.reader_presence readers={@readers_here} />
-
-            <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft num">
-              <span class="num">{@resource.page_count}</span> pages
-            </p>
-
+            <span class="mono-tag num"><span class="num">{@resource.page_count}</span> pages</span>
             <StudysyncWeb.Layouts.user_menu current_user={@current_user} />
           </div>
         </header>
@@ -250,7 +246,7 @@ defmodule StudysyncWeb.PdfLive.Show do
       </main>
 
       <aside class="w-[360px] shrink-0 bg-paper-2 border-l border-paper-2 flex flex-col">
-        <header class="px-6 py-4 border-b border-paper-2/60 space-y-3">
+        <header class="px-5 py-4 border-b border-paper-2 space-y-3">
           <nav aria-label="Scope" class="flex gap-1.5">
             <.scope_tab
               scope={:all}
@@ -266,7 +262,7 @@ defmodule StudysyncWeb.PdfLive.Show do
             />
           </nav>
 
-          <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+          <p class="section-label">
             Margin · <span class="num">{@scoped_filtered}</span>
             of <span class="num">{@scoped_total}</span>
             notes
@@ -404,7 +400,7 @@ defmodule StudysyncWeb.PdfLive.Show do
   defp milestone_form_section(assigns) do
     ~H"""
     <section class="border-l-2 border-terracotta pl-4 py-3 mb-4 bg-paper">
-      <p class="font-mono text-[10px] uppercase tracking-widest text-terracotta mb-2">
+      <p class="section-label text-terracotta mb-2">
         New milestone · page <span class="num">{@placement.page}</span>
       </p>
 
@@ -443,7 +439,7 @@ defmodule StudysyncWeb.PdfLive.Show do
   defp annotation_form_section(assigns) do
     ~H"""
     <section class="border-l-2 border-terracotta pl-4 py-3 mb-4 bg-paper">
-      <p class="font-mono text-[10px] uppercase tracking-widest text-terracotta mb-2">
+      <p class="section-label text-terracotta mb-2">
         New {form_label(@type)} · page <span class="num">{@selection.page}</span>
       </p>
 
@@ -472,9 +468,7 @@ defmodule StudysyncWeb.PdfLive.Show do
             checked={visibility_private?(@form[:visibility].value)}
             class="checkbox checkbox-xs"
           />
-          <span class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-            Private — only you
-          </span>
+          <span class="section-label">Private — only you</span>
         </label>
 
         <div class="flex gap-2">

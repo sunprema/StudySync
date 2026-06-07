@@ -25,63 +25,77 @@ defmodule StudysyncWeb.InviteLive.Accept do
 
   def render(assigns) do
     ~H"""
-    <div class="mx-auto max-w-xl px-8 py-16">
-      <p class="font-mono text-xs uppercase tracking-widest text-ink-soft">Invitation</p>
+    <div class="min-h-screen bg-paper flex flex-col items-center justify-center px-6 py-16">
+      <div class="w-full max-w-md">
+        <p class="section-label mb-6">Invitation</p>
 
-      <%= case @state do %>
-        <% :invalid_token -> %>
-          <h1 class="font-display text-4xl text-ink mt-1">Invitation expired</h1>
-          <p class="font-serif italic text-ink-soft mt-6">
-            This invite link is invalid or older than 14 days. Ask the workspace admin to resend.
-          </p>
-        <% :missing -> %>
-          <h1 class="font-display text-4xl text-ink mt-1">Invitation not found</h1>
-          <p class="font-serif italic text-ink-soft mt-6">
-            This invitation no longer exists.
-          </p>
-        <% :already_active -> %>
-          <h1 class="font-display text-4xl text-ink mt-1">Already a member</h1>
-          <p class="font-serif italic text-ink-soft mt-6">
-            You're already in <strong>{@workspace.name}</strong>.
-          </p>
-          <.link
-            navigate={~p"/workspaces/#{@workspace.id}"}
-            class="font-mono text-xs uppercase tracking-widest text-terracotta mt-6 inline-block"
-          >
-            Go to workspace →
-          </.link>
-        <% :signed_out -> %>
-          <h1 class="font-display text-4xl text-ink mt-1">
-            You're invited to {@workspace.name}
-          </h1>
-          <p class="font-serif italic text-ink-soft mt-6">
-            Sign in or create an account with <strong>{to_string(@invite_email)}</strong> to accept.
-          </p>
-          <div class="mt-8 flex gap-4">
-            <.link navigate={~p"/sign-in"} class="btn btn-primary">Sign in</.link>
-            <.link
-              navigate={~p"/register"}
-              class="font-mono text-xs uppercase tracking-widest text-ink-soft"
-            >
-              Create account →
-            </.link>
-          </div>
-        <% :wrong_user -> %>
-          <h1 class="font-display text-4xl text-ink mt-1">Not your invitation</h1>
-          <p class="font-serif italic text-ink-soft mt-6">
-            This invitation was sent to a different email. Sign in as that user to accept.
-          </p>
-        <% :ready -> %>
-          <h1 class="font-display text-4xl text-ink mt-1">
-            Join {@workspace.name}
-          </h1>
-          <p class="font-serif italic text-ink-soft mt-6">
-            You've been invited to join this workspace.
-          </p>
-          <button type="button" phx-click="accept" class="btn btn-primary mt-8">
-            Accept invitation
-          </button>
-      <% end %>
+        <div class="card">
+          <%= case @state do %>
+            <% :invalid_token -> %>
+              <div class="card-pad space-y-4">
+                <h1 class="font-display text-3xl text-ink">Invitation expired</h1>
+                <p class="font-serif italic text-ink-soft text-sm leading-relaxed">
+                  This invite link is invalid or older than 14 days. Ask the workspace admin to resend.
+                </p>
+              </div>
+            <% :missing -> %>
+              <div class="card-pad space-y-4">
+                <h1 class="font-display text-3xl text-ink">Invitation not found</h1>
+                <p class="font-serif italic text-ink-soft text-sm leading-relaxed">
+                  This invitation no longer exists.
+                </p>
+              </div>
+            <% :already_active -> %>
+              <div class="card-pad space-y-4">
+                <h1 class="font-display text-3xl text-ink">Already a member</h1>
+                <p class="font-serif italic text-ink-soft text-sm leading-relaxed">
+                  You're already in <strong class="font-semibold text-ink">{@workspace.name}</strong>.
+                </p>
+                <.link navigate={~p"/workspaces/#{@workspace.id}"} class="btn btn-primary">
+                  Go to workspace
+                </.link>
+              </div>
+            <% :signed_out -> %>
+              <div class="card-pad space-y-4">
+                <h1 class="font-display text-3xl text-ink">
+                  You're invited to {@workspace.name}
+                </h1>
+                <p class="font-serif italic text-ink-soft text-sm leading-relaxed">
+                  Sign in or create an account with
+                  <strong class="font-semibold text-ink not-italic">
+                    {to_string(@invite_email)}
+                  </strong>
+                  to accept.
+                </p>
+                <div class="flex gap-3 pt-2">
+                  <.link navigate={~p"/sign-in"} class="btn btn-primary">Sign in</.link>
+                  <.link navigate={~p"/register"} class="btn btn-ghost">Create account</.link>
+                </div>
+              </div>
+            <% :wrong_user -> %>
+              <div class="card-pad space-y-4">
+                <h1 class="font-display text-3xl text-ink">Not your invitation</h1>
+                <p class="font-serif italic text-ink-soft text-sm leading-relaxed">
+                  This invitation was sent to a different email. Sign in as that user to accept.
+                </p>
+              </div>
+            <% :ready -> %>
+              <div class="card-pad space-y-4">
+                <h1 class="font-display text-3xl text-ink">
+                  Join {@workspace.name}
+                </h1>
+                <p class="font-serif italic text-ink-soft text-sm leading-relaxed">
+                  You've been invited to join this workspace. Accept to get access to the library and start reading with the group.
+                </p>
+                <div class="pt-2">
+                  <button type="button" phx-click="accept" class="btn btn-primary">
+                    Accept invitation
+                  </button>
+                </div>
+              </div>
+          <% end %>
+        </div>
+      </div>
     </div>
     """
   end

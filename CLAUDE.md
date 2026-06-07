@@ -8,7 +8,7 @@ This file is the operating manual for any Claude coding agent working on this co
 
 **StudySync** is a collaborative, AI-assisted study platform centered on PDF-based learning. A reading group uploads a book, reads it together asynchronously, anchors discussion to specific passages via annotations, and tracks progress through milestones and rubber stamps.
 
-We are building **Direction 01 — Margin Notes**: a classical book-margin metaphor. Annotations live in a literal margin column to the right of the page, anchored via footnote-style numbered markers (¹, ², ³) inline in the prose. Warm, literary, paper-cream surface with terracotta as the lone accent.
+We are building **Direction 01 — Margin Notes**: a classical book-margin metaphor. Annotations live in a literal margin column to the right of the page, anchored via footnote-style numbered markers (¹, ², ³) inline in the prose.
 
 The full product spec lives in `references/REQUIREMENTS.md`. The visual reference lives in `.claude/skills/frontend/references/StudySync_Design Explorations.pdf` (pages 2–5 are Direction 01). When the spec and this file disagree, **ask the user before deviating** — don't pick a side silently.
 
@@ -86,7 +86,7 @@ there's no dedicated event. The earlier "click anywhere to drop" mode and
 the `milestone_mode` prop are gone with it. -->
 
 - `apply_stamp` → `{ milestone_id }` — fired when the user confirms a stamp from the per-milestone popover. The LiveView authorises through Ash, applies the stamp, and broadcasts (`:stamp_applied`) so all open readers re-fetch and patch. (added Slice 13)
-- `pages_visible` → `{ first, last, primary }` — debounced (~120ms) report of the page range currently intersecting the viewport. `first`/`last` come from the canvas's IntersectionObserver (with its 1000px rootMargin) and define the virtualization range. `primary` is the page with the largest *true* viewport overlap — the LiveView uses it as the focal page so the margin column's focal-page highlight and the "Page" scope tab match what the reader is actually looking at, not whatever sliver of an adjacent page sits within the rootMargin buffer. (added Slice 15; lazy-hydration role removed in Slice 15a — the reader now eagerly loads the whole book at mount. `primary` added when the margin scope tabs landed.)
+- `pages_visible` → `{ first, last, primary }` — debounced (~120ms) report of the page range currently intersecting the viewport. `first`/`last` come from the canvas's IntersectionObserver (with its 1000px rootMargin) and define the virtualization range. `primary` is the page with the largest _true_ viewport overlap — the LiveView uses it as the focal page so the margin column's focal-page highlight and the "Page" scope tab match what the reader is actually looking at, not whatever sliver of an adjacent page sits within the rootMargin buffer. (added Slice 15; lazy-hydration role removed in Slice 15a — the reader now eagerly loads the whole book at mount. `primary` added when the margin scope tabs landed.)
 - `outline_loaded` → `{ chapters: [{ label, page }] }` — fired once after PDF.js loads the document, with the top-level outline entries flattened to `{ label, page }` pairs (page is 1-indexed). Empty list when the PDF has no outline. The LiveView stores it as `@chapters` and feeds the chapter rail. Top-level only — nested outline items are ignored to keep the rail visually quiet. (added Slice 17)
 - `chapter_clicked` → `{ page }` — fired by the chapter rail (LV-rendered, `phx-click`) when a reader clicks a chapter. The LiveView validates `page` is in range and pushes `scroll_to_page` back to the canvas. (added Slice 17)
 
@@ -233,7 +233,7 @@ Also out of scope until explicitly requested: flashcard generation, public marke
 ### 8.4 Common traps
 
 - **Don't put domain logic in LiveViews.** LiveViews orchestrate; Ash actions decide.
-- **Don't broadcast raw resource structs over PubSub.** Broadcast the minimum needed (id, type, scope) and let subscribers refetch via Ash if they need the full thing — keeps authorization honest. *Carve-out:* `Studysync.Chat.PubSub` (Slice 18) broadcasts the full `%Chat.Message{}` because chat is non-persistent — there's nothing to refetch from. This is the only place the rule is relaxed.
+- **Don't broadcast raw resource structs over PubSub.** Broadcast the minimum needed (id, type, scope) and let subscribers refetch via Ash if they need the full thing — keeps authorization honest. _Carve-out:_ `Studysync.Chat.PubSub` (Slice 18) broadcasts the full `%Chat.Message{}` because chat is non-persistent — there's nothing to refetch from. This is the only place the rule is relaxed.
 - **Don't expand the LiveView↔Svelte contract on a whim.** Updating §4.3 is part of the change.
 - **Don't introduce a second Svelte component to "make life easier".** The cost of crossing that boundary repeatedly is higher than the cost of doing it well in LiveView once.
 - **Don't reach past Ash to the Repo.** If Ash can't express it, that's a conversation, not a workaround.

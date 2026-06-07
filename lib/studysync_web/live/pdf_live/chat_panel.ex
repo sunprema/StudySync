@@ -157,19 +157,15 @@ defmodule StudysyncWeb.PdfLive.ChatPanel do
       >
         <header class="flex items-center justify-between px-4 py-3 border-b border-paper/60">
           <div>
-            <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-              Chat · <span class="num">{@here_now}</span> here now
-            </p>
-            <p class="font-mono text-[9px] uppercase tracking-widest text-ink-soft/70 mt-0.5">
-              Transient — clears on restart
-            </p>
+            <p class="section-label">Chat · <span class="num">{@here_now}</span> here now</p>
+            <p class="section-label opacity-60 mt-0.5">Transient — clears on restart</p>
           </div>
           <button
             type="button"
             phx-click="toggle"
             phx-target={@myself}
             aria-label="Close chat"
-            class="font-mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-terracotta cursor-pointer"
+            class="section-label hover:text-terracotta cursor-pointer transition-colors"
           >
             Close
           </button>
@@ -186,7 +182,7 @@ defmodule StudysyncWeb.PdfLive.ChatPanel do
             id={dom_id}
             class="flex flex-col gap-1"
           >
-            <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
+            <p class="section-label">
               <span class="text-terracotta">{display_name(message)}</span>
               <span> · </span>
               <span class="num">{format_time(message.sent_at)}</span>
@@ -198,10 +194,7 @@ defmodule StudysyncWeb.PdfLive.ChatPanel do
         </div>
 
         <footer class="border-t border-paper/60 px-4 py-3 space-y-2">
-          <p
-            :if={@error}
-            class="font-mono text-[10px] uppercase tracking-widest text-terracotta"
-          >
+          <p :if={@error} class="section-label text-terracotta">
             {@error}
           </p>
           <form
@@ -218,12 +211,7 @@ defmodule StudysyncWeb.PdfLive.ChatPanel do
               placeholder="Say something to the room…"
               class="flex-1 resize-none bg-paper border border-paper-2 rounded-sm px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-terracotta"
             >{@body_value}</textarea>
-            <button
-              type="submit"
-              class="font-mono text-[10px] uppercase tracking-widest px-3 py-2 rounded-sm border border-terracotta bg-terracotta text-paper hover:bg-terracotta/90 transition-colors cursor-pointer"
-            >
-              Send
-            </button>
+            <button type="submit" class="btn btn-primary btn-sm">Send</button>
           </form>
         </footer>
       </section>
@@ -233,14 +221,14 @@ defmodule StudysyncWeb.PdfLive.ChatPanel do
         phx-click="toggle"
         phx-target={@myself}
         class={[
-          "pointer-events-auto font-mono text-[10px] uppercase tracking-widest px-3 py-2 rounded-sm border border-paper-2 bg-paper-2 text-ink hover:border-terracotta hover:text-terracotta transition-colors cursor-pointer items-center gap-2",
+          "pointer-events-auto btn btn-ghost btn-sm items-center gap-2",
           if(@open?, do: "hidden", else: "flex")
         ]}
         aria-label={"Open chat. #{@unread} unread."}
         aria-hidden={to_string(@open?)}
       >
-        <span>Chat</span>
-        <span :if={@unread > 0} class="num text-terracotta">· {@unread}</span>
+        <span class="section-label">Chat</span>
+        <span :if={@unread > 0} class="num text-terracotta section-label">· {@unread}</span>
       </button>
     </div>
     """

@@ -1,7 +1,7 @@
 /* StudySync — Direction 01: Margin Notes
    Palette and typography follow CLAUDE.md §5. */
 
-@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;1,8..60,400&display=swap");
 
 @import "tailwindcss" source(none);
 @source "../../deps/ash_authentication_phoenix";
@@ -14,122 +14,63 @@
    The heroicons installation itself is managed by your mix.exs */
 @plugin "../vendor/heroicons";
 
-/* daisyUI Tailwind Plugin. */
-@plugin "daisyui/index.js" {
-  themes: false;
-}
+/* No DaisyUI — design system component styles are defined below. */
 
-/* Margin Notes design tokens — see CLAUDE.md §5.1, §5.2. */
+/* PostOpGuard design tokens — cool neutral palette, teal accent. */
 @theme {
-  --color-paper: #f4efe3;
-  --color-paper-2: #e8e0ce;
-  --color-terracotta: #b8512e;
-  --color-ink: #2a2521;
-  --color-ink-soft: #5c5750;
+  /* Neutrals — cool-tinted whites and charcoal */
+  --color-paper: oklch(98% 0.004 200);
+  --color-paper-2: oklch(95% 0.006 215);
+  --color-terracotta: oklch(50% 0.07 185);
+  --color-ink: oklch(22% 0.012 240);
+  --color-ink-soft: oklch(54% 0.012 240);
 
-  /* Highlight tints (CLAUDE.md §5.1) — mapped to annotation types in
-     Slice 10: peach=comment, mint=question, lavender=puzzle, butter=ai. */
+  /* Annotation highlight tints — intentionally warm to encode annotation
+     type visually regardless of theme. Not overridden by theme switch. */
   --color-peach: #f0c8a8;
   --color-mint: #c2dcc6;
   --color-lavender: #d2c8e0;
   --color-butter: #ecdfa8;
 
-  --font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
+  /* Semantic status colors */
+  --color-error: oklch(55% 0.19 25);
+  --color-success: oklch(58% 0.11 155);
+  --color-warning: oklch(68% 0.14 70);
+
+  --font-display: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
-  --font-sans: "Source Serif 4", Georgia, "Times New Roman", serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-/* Two themes:
-   - "study_sync_default" — the warm paper-cream of Margin Notes (default).
-   - "nord" — the alternate palette opt-in via the user's settings menu.
+/* Theme note: design system component styles use --ds-* custom properties
+   defined below. The warm paper palette is the default; Nord overrides the
+   --color-* and --ds-* vars under [data-theme="nord"]. */
 
-   Both register with DaisyUI for any native components. The full app reskin
-   under [data-theme="nord"] happens via the @theme-token overrides below
-   (Tailwind v4 utilities like `bg-paper` resolve to `var(--color-paper)`,
-   so overriding the variable per data-theme flips every existing template
-   without a 200-call utility migration). */
-@plugin "daisyui/theme/index.js" {
-  name: "study_sync_default";
-  default: true;
-  prefersdark: false;
-  color-scheme: "light";
-  --color-base-100: oklch(94.5% 0.018 80);
-  --color-base-200: oklch(89% 0.028 84);
-  --color-base-300: oklch(83% 0.032 84);
-  --color-base-content: oklch(20% 0.008 60);
-  --color-primary: oklch(54% 0.143 38);
-  --color-primary-content: oklch(94.5% 0.018 80);
-  --color-secondary: oklch(40% 0.008 65);
-  --color-secondary-content: oklch(94.5% 0.018 80);
-  --color-accent: oklch(54% 0.143 38);
-  --color-accent-content: oklch(94.5% 0.018 80);
-  --color-neutral: oklch(20% 0.008 60);
-  --color-neutral-content: oklch(94.5% 0.018 80);
-  --color-info: oklch(54% 0.12 230);
-  --color-info-content: oklch(94.5% 0.018 80);
-  --color-success: oklch(56% 0.1 150);
-  --color-success-content: oklch(94.5% 0.018 80);
-  --color-warning: oklch(70% 0.15 75);
-  --color-warning-content: oklch(20% 0.008 60);
-  --color-error: oklch(54% 0.143 38);
-  --color-error-content: oklch(94.5% 0.018 80);
-  --radius-selector: 0.125rem;
-  --radius-field: 0.125rem;
-  --radius-box: 0.25rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1px;
-  --depth: 0;
-  --noise: 0;
-}
-
-/* Nord — DaisyUI block. Drives any DaisyUI semantic-token usage. */
-@plugin "daisyui/theme/index.js" {
-  name: "nord";
-  default: false;
-  prefersdark: false;
-  color-scheme: "dark";
-  --color-base-100: #2e3440;
-  --color-base-200: #3b4252;
-  --color-base-300: #434c5e;
-  --color-base-content: #eceff4;
-  --color-primary: #88c0d0;
-  --color-primary-content: #2e3440;
-  --color-secondary: #81a1c1;
-  --color-secondary-content: #2e3440;
-  --color-accent: #88c0d0;
-  --color-accent-content: #2e3440;
-  --color-neutral: #4c566a;
-  --color-neutral-content: #eceff4;
-  --color-info: #5e81ac;
-  --color-info-content: #eceff4;
-  --color-success: #a3be8c;
-  --color-success-content: #2e3440;
-  --color-warning: #ebcb8b;
-  --color-warning-content: #2e3440;
-  --color-error: #bf616a;
-  --color-error-content: #eceff4;
-  --radius-selector: 0.125rem;
-  --radius-field: 0.125rem;
-  --radius-box: 0.25rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1px;
-  --depth: 0;
-  --noise: 0;
-}
-
-/* Nord — re-bind the @theme palette tokens so every existing
-   `bg-paper`, `text-ink`, `text-terracotta`, etc. utility flips. The
-   highlight tints (peach/mint/lavender/butter) are intentionally NOT
-   overridden — they encode annotation type, not theme. */
+/* Nord — dark variant. Highlight tints (peach/mint/lavender/butter) are
+   intentionally NOT overridden — they encode annotation type, not theme. */
 [data-theme="nord"] {
-  --color-paper: #2e3440;
-  --color-paper-2: #3b4252;
-  --color-terracotta: #88c0d0;
-  --color-ink: #eceff4;
-  --color-ink-soft: #d8dee9;
+  --color-paper: #1e2128;
+  --color-paper-2: #282c34;
+  --color-terracotta: oklch(62% 0.09 185);
+  --color-ink: oklch(93% 0.006 220);
+  --color-ink-soft: oklch(72% 0.010 240);
+
+  /* Design system token overrides for nord */
+  --ds-bg: #1e2128;
+  --ds-surface: #252a33;
+  --ds-surface-2: #2d3340;
+  --ds-surface-3: #353c4a;
+  --ds-ink: oklch(93% 0.006 220);
+  --ds-ink-2: oklch(82% 0.008 220);
+  --ds-muted: oklch(62% 0.010 230);
+  --ds-faint: oklch(45% 0.008 230);
+  --ds-line: oklch(30% 0.010 230);
+  --ds-line-strong: oklch(38% 0.012 230);
+  --ds-accent: oklch(62% 0.09 185);
+  --ds-accent-2: oklch(68% 0.10 185);
+  --ds-accent-tint: oklch(25% 0.04 185);
+  --ds-accent-edge: oklch(40% 0.07 185);
 }
 
 /* Add variants based on LiveView classes */
@@ -159,12 +100,14 @@
   font-feature-settings: "tnum";
 }
 
-/* Default body uses the serif body face; mono is opt-in via font-mono. */
 html,
 body {
-  font-family: var(--font-serif);
-  background-color: var(--color-base-100);
-  color: var(--color-base-content);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
 }
 
 /* Slice 16.2 — margin-note pulse on bi-directional navigation. The
@@ -194,6 +137,296 @@ body {
 [data-annotation-id].is-dim {
   opacity: 0.35;
   transition: opacity 0.12s ease;
+}
+
+/* ==========================================================================
+   Design System — component CSS
+   Tokens use --ds-* custom properties so they respond to the Nord theme
+   override block above without any template changes.
+   ========================================================================== */
+
+:root {
+  /* PostOpGuard design tokens */
+  --ds-bg: oklch(98% 0.004 200);
+  --ds-surface: #ffffff;
+  --ds-surface-2: oklch(97% 0.005 210);
+  --ds-surface-3: oklch(95% 0.006 215);
+  --ds-ink: oklch(22% 0.012 240);
+  --ds-ink-2: oklch(38% 0.012 240);
+  --ds-muted: oklch(54% 0.012 240);
+  --ds-faint: oklch(72% 0.010 240);
+  --ds-line: oklch(92% 0.006 220);
+  --ds-line-strong: oklch(86% 0.008 220);
+  --ds-accent: oklch(50% 0.07 185);
+  --ds-accent-2: oklch(60% 0.08 185);
+  --ds-accent-tint: oklch(94% 0.024 185);
+  --ds-accent-edge: oklch(82% 0.05 185);
+  --ds-critical: oklch(55% 0.19 25);
+  --ds-critical-tint: oklch(95% 0.035 25);
+  --ds-critical-edge: oklch(82% 0.10 25);
+  --ds-base-fs: 14px;
+  --ds-label-fs: 11px;
+  --ds-card-pad: 22px;
+}
+
+/* ── Buttons ─────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-line-strong);
+  color: var(--ds-ink);
+  padding: 7px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms, color 120ms;
+  text-decoration: none;
+  white-space: nowrap;
+  line-height: 1;
+}
+.btn:hover { background: var(--ds-surface-2); }
+
+.btn-primary {
+  background: var(--ds-ink);
+  color: oklch(96% 0.004 200);
+  border-color: var(--ds-ink);
+}
+.btn-primary:hover { background: oklch(30% 0.012 240); border-color: oklch(30% 0.012 240); }
+
+.btn-ghost { background: transparent; border-color: transparent; color: var(--ds-ink-2); }
+.btn-ghost:hover { background: var(--ds-surface-2); color: var(--ds-ink); }
+
+.btn-outline { background: transparent; color: var(--ds-ink); border-color: var(--ds-line-strong); }
+.btn-outline:hover { background: var(--ds-surface-2); }
+
+.btn-neutral { background: var(--ds-ink-2); color: var(--ds-surface); border-color: var(--ds-ink-2); }
+.btn-neutral:hover { background: var(--ds-ink); border-color: var(--ds-ink); }
+
+.btn-danger { background: var(--ds-critical); border-color: var(--ds-critical); color: white; }
+.btn-danger:hover { filter: brightness(0.9); }
+
+.btn-accent { background: var(--ds-accent); color: #fff; border-color: var(--ds-accent); }
+.btn-accent:hover { background: var(--ds-accent-2); border-color: var(--ds-accent-2); }
+
+.btn-sm { padding: 4px 8px; font-size: 12px; }
+.btn-block { width: 100%; }
+.btn-soft { opacity: 0.85; }
+
+/* ── Cards ───────────────────────────────────────────── */
+
+.card {
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.card-pad { padding: var(--ds-card-pad); }
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px var(--ds-card-pad);
+  border-bottom: 1px solid var(--ds-line);
+  gap: 12px;
+}
+
+/* ── Pills ───────────────────────────────────────────── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--ds-label-fs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; }
+.pill.accent { color: var(--ds-accent); background: var(--ds-accent-tint); border-color: var(--ds-accent-edge); }
+.pill.accent .pill-dot { background: var(--ds-accent); }
+.pill.muted { color: var(--ds-muted); background: var(--ds-surface-2); border-color: var(--ds-line); }
+.pill.muted .pill-dot { background: var(--ds-muted); }
+.pill.critical { color: var(--ds-critical); background: var(--ds-critical-tint); border-color: var(--ds-critical-edge); }
+.pill.critical .pill-dot { background: var(--ds-critical); }
+
+/* ── Section label / mono-tag ────────────────────────── */
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: var(--ds-label-fs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-muted);
+  font-weight: 500;
+}
+.mono-tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ds-muted);
+}
+
+/* ── Divider ─────────────────────────────────────────── */
+
+.divider { height: 1px; background: var(--ds-line); width: 100%; }
+
+/* ── Data row ────────────────────────────────────────── */
+
+.dr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--ds-line);
+}
+.dr:last-child { border-bottom: 0; }
+.dr-label { color: var(--ds-muted); font-size: 12px; font-family: var(--font-mono); }
+.dr-value { font-family: var(--font-mono); font-size: 12.5px; }
+
+/* ── Form controls ───────────────────────────────────── */
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-line-strong);
+  border-radius: 6px;
+  color: var(--ds-ink);
+  font-size: var(--ds-base-fs);
+  outline: none;
+  transition: border-color 120ms;
+}
+.input { padding: 8px 12px; font-family: var(--font-sans); line-height: 1.5; }
+.input-sm { padding: 5px 10px; font-size: 12px; }
+.select { padding: 8px 12px; cursor: pointer; }
+.textarea { padding: 8px 12px; font-family: var(--font-sans); line-height: 1.5; resize: vertical; }
+.input:focus, .select:focus, .textarea:focus { border-color: var(--ds-accent); }
+.input-error, .select-error, .textarea-error { border-color: var(--ds-critical); }
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--ds-line-strong);
+  border-radius: 3px;
+  background: var(--ds-surface);
+  cursor: pointer;
+  accent-color: var(--ds-accent);
+  flex-shrink: 0;
+}
+.checkbox-sm { width: 14px; height: 14px; }
+.checkbox:focus { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+.label {
+  font-family: var(--font-mono);
+  font-size: var(--ds-label-fs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ds-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+.fieldset { display: block; }
+
+/* ── Progress bars ───────────────────────────────────── */
+
+.progress {
+  display: block;
+  width: 100%;
+  height: 6px;
+  background: var(--ds-line);
+  border-radius: 3px;
+  overflow: hidden;
+  appearance: none;
+}
+.progress::-webkit-progress-bar { background: var(--ds-line); border-radius: 3px; }
+.progress::-webkit-progress-value { background: var(--ds-accent); border-radius: 3px; }
+.progress::-moz-progress-bar { background: var(--ds-accent); border-radius: 3px; }
+.progress-primary::-webkit-progress-value { background: var(--ds-accent); }
+.progress-primary::-moz-progress-bar { background: var(--ds-accent); }
+
+/* ── Toast / Flash notifications ─────────────────────── */
+
+.toast {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 50;
+  pointer-events: none;
+}
+.toast-top { top: 16px; }
+.toast-end { right: 16px; }
+.toast > * { pointer-events: auto; }
+
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  font-size: 13px;
+  color: var(--ds-ink);
+}
+.alert-info { border-left: 3px solid var(--ds-accent); }
+.alert-error { border-left: 3px solid var(--ds-critical); }
+
+/* ── Tables ──────────────────────────────────────────── */
+
+.table { width: 100%; border-collapse: collapse; font-size: var(--ds-base-fs); }
+.table thead th {
+  font-family: var(--font-mono);
+  font-size: var(--ds-label-fs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ds-muted);
+  font-weight: 500;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--ds-line);
+}
+.table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--ds-line); color: var(--ds-ink); }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table-zebra tbody tr:nth-child(even) td { background: var(--ds-surface-2); }
+
+/* ── Topbar (app shell) ──────────────────────────────── */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 56px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--ds-line);
+  background: var(--ds-surface);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* ── Focus ring ──────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--ds-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* ==========================================================================

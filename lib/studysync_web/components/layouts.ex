@@ -35,35 +35,20 @@ defmodule StudysyncWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={static_url(StudysyncWeb.Endpoint, ~p"/images/logo.svg")} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://hexdocs.pm/phoenix/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
-      </div>
+    <header class="topbar">
+      <a href="/" class="flex items-baseline gap-1 font-display text-xl text-ink">
+        <em>Study</em>Sync
+      </a>
+      <nav class="ml-auto flex items-center gap-3">
+        <.link navigate={~p"/workspaces"} class="btn btn-ghost btn-sm">Workspaces</.link>
+        <%= if @current_scope && @current_scope.user do %>
+          <StudysyncWeb.Layouts.user_menu current_user={@current_scope.user} />
+        <% end %>
+      </nav>
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+    <main class="px-6 py-12">
+      <div class="mx-auto max-w-xl">
         {render_slot(@inner_block)}
       </div>
     </main>
@@ -167,16 +152,12 @@ defmodule StudysyncWeb.Layouts do
           ]}
         >
           <div>
-            <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft">
-              Signed in as
-            </p>
+            <p class="section-label">Signed in as</p>
             <p class="font-serif text-ink text-sm truncate mt-1">{@current_user.email}</p>
           </div>
 
           <div>
-            <p class="font-mono text-[10px] uppercase tracking-widest text-ink-soft mb-2">
-              Theme
-            </p>
+            <p class="section-label mb-2">Theme</p>
 
             <div class="grid grid-cols-2 gap-2">
               <.theme_option
@@ -196,7 +177,7 @@ defmodule StudysyncWeb.Layouts do
             <.link
               href={~p"/sign-out"}
               method="get"
-              class="font-mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-terracotta transition-colors"
+              class="section-label hover:text-terracotta transition-colors"
             >
               Sign out
             </.link>
@@ -226,9 +207,7 @@ defmodule StudysyncWeb.Layouts do
         )
       ]}
     >
-      <span class="font-mono text-[10px] uppercase tracking-widest block">
-        {@label}
-      </span>
+      <span class="section-label block">{@label}</span>
     </button>
     """
   end
@@ -245,37 +224,37 @@ defmodule StudysyncWeb.Layouts do
   end
 
   @doc """
-  Provides dark vs light theme toggle based on themes defined in app.css.
-
-  See <head> in root.html.heex which applies the theme before page load.
+  Theme toggle button — cycles through study_sync_default and nord themes.
+  Used inside the user menu rather than as a standalone component.
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
-
+    <div class="flex items-center gap-1 rounded-full border border-paper-2 bg-paper-2/50 p-0.5">
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="flex p-1.5 cursor-pointer rounded-full hover:bg-paper transition-colors"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="system"
+        aria-label="System theme"
       >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-computer-desktop-micro" class="size-3.5 text-ink-soft" />
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="flex p-1.5 cursor-pointer rounded-full hover:bg-paper transition-colors"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="light"
+        aria-label="Light theme"
       >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-sun-micro" class="size-3.5 text-ink-soft" />
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="flex p-1.5 cursor-pointer rounded-full hover:bg-paper transition-colors"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="dark"
+        aria-label="Dark theme"
       >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-moon-micro" class="size-3.5 text-ink-soft" />
       </button>
     </div>
     """
