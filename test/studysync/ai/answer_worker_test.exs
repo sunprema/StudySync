@@ -16,7 +16,10 @@ defmodule Studysync.AI.AnswerWorkerTest do
   # Reset the AI stub to the test default before every test so env-overriding
   # tests in this module don't bleed into each other.
   setup do
-    stub = fn _messages, _opts -> {:ok, "A synthesised reading-group insight generated for testing."} end
+    stub = fn _messages, _opts ->
+      {:ok, "A synthesised reading-group insight generated for testing."}
+    end
+
     Application.put_env(:studysync, :ai_complete_fn, stub)
     on_exit(fn -> Application.put_env(:studysync, :ai_complete_fn, stub) end)
     :ok

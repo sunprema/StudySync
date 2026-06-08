@@ -1,7 +1,7 @@
 <script>
   import { SvelteFlow, Controls, Background } from "@xyflow/svelte";
   import "@xyflow/svelte/dist/style.css";
-  import { useLiveSvelte } from "live_svelte";
+  import { useLiveSvelte, useLiveEvent } from "live_svelte";
   import { onMount, untrack, setContext } from "svelte";
   import * as pdfjsLib from "pdfjs-dist";
   import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -11,6 +11,7 @@
   import TextNode    from "./TextNode.svelte";
   import QuoteNode   from "./QuoteNode.svelte";
   import LinkNode    from "./LinkNode.svelte";
+  import HotTakeNode from "./HotTakeNode.svelte";
   import NodeSidebar from "./NodeSidebar.svelte";
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -54,14 +55,16 @@
     textNode:    TextNode,
     quoteNode:   QuoteNode,
     linkNode:    LinkNode,
+    hotTakeNode: HotTakeNode,
   };
 
   const typeToFlowType = {
-    page:    "pageNode",
-    youtube: "youtubeNode",
-    text:    "textNode",
-    quote:   "quoteNode",
-    link:    "linkNode",
+    page:     "pageNode",
+    youtube:  "youtubeNode",
+    text:     "textNode",
+    quote:    "quoteNode",
+    link:     "linkNode",
+    hot_take: "hotTakeNode",
   };
 
   function toFlowNodes(ns) {
@@ -78,6 +81,9 @@
       node_type: n.node_type,
       label: n.label,
       user_id: n.user_id,
+      reactions: n.reactions || [],
+      onReact: (emoji) => pushEvent("toggle_reaction", { node_id: n.id, emoji }),
+      onDelete: () => pushEvent("node_deleted", { id: n.id }),
     };
     switch (n.node_type) {
       case "page":
@@ -87,6 +93,7 @@
       case "quote":
         return { ...base, content: n.content };
       case "text":
+      case "hot_take":
         return { ...base, content: n.content, onUpdate: (c) => updateNodeContent(n.id, c) };
       default:
         return { ...base, content: n.content };
@@ -98,6 +105,9 @@
       id: e.id,
       source: e.source_id,
       target: e.target_id,
+      label: e.label || "",
+      labelStyle: "font-size: 14px; cursor: pointer;",
+      labelBgStyle: "fill: var(--color-paper-2, #e8e0ce); fill-opacity: 0.85; rx: 2px;",
     }));
   }
 
@@ -126,6 +136,76 @@
   // Text node inline edit — push content update as a node_created+delete or a dedicated update
   function updateNodeContent(id, content) {
     pushEvent("node_content_updated", { id, content });
+  }
+
+  // ── Live cursors ──────────────────────────────────────────────────────────
+  let peerCursors = $state({});
+  const CURSOR_COLORS = ["#b8512e","#5b7fa6","#4a9a7a","#7a5ea6","#e8872a","#2e7ab8","#6a9a4a","#a65e7a"];
+
+  function cursorColor(userId) {
+    const hash = [...userId].reduce((a, c) => a + c.charCodeAt(0), 0);
+    return CURSOR_COLORS[hash % CURSOR_COLORS.length];
+  }
+
+  function cursorName(email) {
+    return (email || "?").split("@")[0];
+  }
+
+  // Receive peer cursor push events
+  useLiveEvent("peer_cursor", (data) => {
+    peerCursors = { ...peerCursors, [data.user_id]: { email: data.email, x: data.x, y: data.y, lastSeen: Date.now() } };
+  });
+
+  // Clean up stale cursors (> 5s without update)
+  $effect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const active = Object.fromEntries(Object.entries(peerCursors).filter(([, c]) => now - c.lastSeen < 5000));
+      if (Object.keys(active).length !== Object.keys(peerCursors).length) peerCursors = active;
+    }, 2000);
+    return () => clearInterval(interval);
+  });
+
+  // Convert flow coords → position relative to .flow-wrap for cursor overlay
+  function flowToCanvasPos(fx, fy) {
+    return { x: fx * viewport.zoom + viewport.x, y: fy * viewport.zoom + viewport.y };
+  }
+
+  // Throttled mouse move — send cursor position to server
+  let _lastCursorSend = 0;
+  function onMouseMove(e) {
+    const now = Date.now();
+    if (now - _lastCursorSend < 80) return;
+    _lastCursorSend = now;
+    const pos = screenToFlowPos(e.clientX, e.clientY);
+    pushEvent("cursor_moved", { x: pos.x, y: pos.y });
+  }
+
+  // ── Edge emoji label picker ───────────────────────────────────────────────
+  const EDGE_EMOJIS = ["🔗", "⚡", "💡", "❓", "➡️", "🔄", "❌", "✅"];
+  let showEdgePicker = $state(false);
+  let edgePickerEdgeId = $state(null);
+  let edgePickerX = $state(0);
+  let edgePickerY = $state(0);
+
+  function onEdgeClick({ detail }) {
+    const { edge, event } = detail;
+    edgePickerEdgeId = edge.id;
+    edgePickerX = event.clientX;
+    edgePickerY = event.clientY;
+    showEdgePicker = true;
+  }
+
+  function pickEdgeEmoji(emoji) {
+    if (edgePickerEdgeId) {
+      pushEvent("edge_label_updated", { id: edgePickerEdgeId, label: emoji });
+    }
+    showEdgePicker = false;
+    edgePickerEdgeId = null;
+  }
+
+  function onCanvasClick(e) {
+    if (showEdgePicker && !e.target.closest(".edge-picker")) showEdgePicker = false;
   }
 
   // ── Drag from sidebar onto canvas ──────────────────────────────────────────
@@ -187,6 +267,13 @@
         position_x: flowPos.x,
         position_y: flowPos.y,
         content: { heading: "", body: "" },
+      });
+    } else if (nodeType === "hot_take") {
+      pushEvent("node_created", {
+        node_type: "hot_take",
+        position_x: flowPos.x,
+        position_y: flowPos.y,
+        content: { text: "" },
       });
     }
   }
@@ -290,6 +377,8 @@
     bind:this={flowContainer}
     ondragover={onDragOver}
     ondrop={onDrop}
+    onmousemove={onMouseMove}
+    onclick={onCanvasClick}
     role="region"
     aria-label="Concept map canvas"
   >
@@ -305,10 +394,25 @@
       {onDelete}
       onnodedragstart={onNodeDragStart}
       onnodedragstop={onNodeDragStop}
+      onedgeclick={onEdgeClick}
     >
       <Controls />
       <Background />
     </SvelteFlow>
+
+    <!-- Live cursor overlay -->
+    <div class="cursor-overlay" aria-hidden="true">
+      {#each Object.entries(peerCursors) as [userId, cursor]}
+        {@const pos = flowToCanvasPos(cursor.x, cursor.y)}
+        {@const color = cursorColor(userId)}
+        <div class="peer-cursor" style="left:{pos.x}px; top:{pos.y}px; --c:{color}">
+          <svg class="cursor-svg" viewBox="0 0 12 16" width="12" height="16">
+            <path d="M0 0 L0 14 L4 10 L8 16 L9.5 15 L5.5 9 L10 9 Z" fill="{color}" stroke="white" stroke-width="0.8"/>
+          </svg>
+          <span class="cursor-label">{cursorName(cursor.email)}</span>
+        </div>
+      {/each}
+    </div>
   </div>
 </div>
 
@@ -367,6 +471,16 @@
         <button type="button" class="btn-ghost" onclick={() => (showLinkForm = false)}>Cancel</button>
       </div>
     </form>
+  </div>
+{/if}
+
+{#if showEdgePicker}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="edge-picker" style="left:{edgePickerX}px; top:{edgePickerY}px;" role="menu">
+    {#each EDGE_EMOJIS as emoji}
+      <button class="edge-emoji-btn" onclick={() => pickEdgeEmoji(emoji)} title={emoji}>{emoji}</button>
+    {/each}
+    <button class="edge-emoji-clear" onclick={() => pickEdgeEmoji("")} title="Remove label">✕</button>
   </div>
 {/if}
 
@@ -432,6 +546,83 @@
     --xy-controls-button-color-hover: var(--color-terracotta, #b8512e);
     --xy-controls-box-shadow: none;
   }
+
+  /* ── Live cursor overlay ──────────────────────────────────────────────── */
+  .cursor-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 5;
+  }
+
+  .peer-cursor {
+    position: absolute;
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    transform: translate(0, 0);
+    transition: left 0.08s linear, top 0.08s linear;
+  }
+
+  .cursor-svg { flex-shrink: 0; }
+
+  .cursor-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: var(--c);
+    color: #fff;
+    padding: 1px 5px;
+    border-radius: 2px;
+    white-space: nowrap;
+    margin-top: 12px;
+  }
+
+  /* ── Edge emoji label picker ──────────────────────────────────────────── */
+  .edge-picker {
+    position: fixed;
+    background: var(--color-paper, #f4efe3);
+    border: 1px solid var(--color-paper-2, #e8e0ce);
+    border-radius: 4px;
+    padding: 4px 6px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    z-index: 2000;
+    box-shadow: 0 2px 8px oklch(0.2 0.01 60 / 0.15);
+    transform: translate(-50%, -110%);
+  }
+
+  .edge-emoji-btn {
+    font-size: 16px;
+    padding: 4px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .edge-emoji-btn:hover {
+    background: var(--color-paper-2, #e8e0ce);
+    border-color: var(--color-ink-soft, #5c5750);
+  }
+
+  .edge-emoji-clear {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: var(--color-ink-soft, #5c5750);
+    padding: 3px 6px;
+    background: none;
+    border: 1px solid var(--color-paper-2, #e8e0ce);
+    border-radius: 2px;
+    cursor: pointer;
+    margin-left: 4px;
+  }
+
+  .edge-emoji-clear:hover { color: var(--color-terracotta, #b8512e); }
 
   /* ── Config forms ─────────────────────────────────────────────────────── */
   .form-overlay {

@@ -1,5 +1,6 @@
 <script>
   import { Handle, Position } from "@xyflow/svelte";
+  import ReactionBar from "./ReactionBar.svelte";
 
   let { data, selected } = $props();
 
@@ -30,6 +31,12 @@
   <Handle type="source" position={Position.Bottom} id="b" class="node-handle" />
   <Handle type="source" position={Position.Left}   id="l" class="node-handle" />
 
+  <button
+    class="delete-btn"
+    title="Delete node"
+    onclick={(e) => { e.stopPropagation(); data?.onDelete?.(); }}
+  >✕</button>
+
   <div class="thumb-area">
     {#if thumb}
       <img src={thumb} alt={title} class="thumb-img" />
@@ -48,6 +55,7 @@
     <span class="yt-badge">YouTube</span>
     <span class="node-title">{title}</span>
   </div>
+  <ReactionBar reactions={data?.reactions ?? []} onReact={data?.onReact} />
 </div>
 
 {#if showPlayer && vid}
@@ -113,6 +121,36 @@
   .yt-node :global(.node-handle:hover) {
     background: #ffd700 !important;
     border-color: #b8512e !important;
+  }
+
+  .delete-btn {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    z-index: 20;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #222;
+    border: 1px solid #555;
+    border-radius: 2px;
+    font-size: 10px;
+    color: #aaa;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .yt-node.show-handles .delete-btn { opacity: 1; }
+
+  .delete-btn:hover {
+    background: #c00;
+    border-color: #f00;
+    color: #fff;
   }
 
   .thumb-area {

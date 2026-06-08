@@ -34,5 +34,9 @@ defmodule Studysync.Board do
 
       define :delete_edge, action: :delete
     end
+
+    resource Studysync.Board.Reaction do
+      define :list_reactions, action: :read
+    end
   end
 end

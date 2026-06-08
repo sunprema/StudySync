@@ -44,6 +44,12 @@ defmodule Studysync.Board.Edge do
 
       change Studysync.Board.Edge.Changes.BroadcastEdgeDeleted
     end
+
+    update :set_label do
+      require_atomic? false
+      argument :label, :string, allow_nil?: true
+      change set_attribute(:label, arg(:label))
+    end
   end
 
   policies do
@@ -52,6 +58,15 @@ defmodule Studysync.Board.Edge do
     end
 
     policy action(:delete) do
+      authorize_if expr(
+                     exists(
+                       resource.workspace.memberships,
+                       user_id == ^actor(:id) and status == :active
+                     )
+                   )
+    end
+
+    policy action(:set_label) do
       authorize_if expr(
                      exists(
                        resource.workspace.memberships,

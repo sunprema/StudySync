@@ -40,6 +40,13 @@
       description: "A web reference",
       color: "var(--color-ink-soft, #5c5750)",
     },
+    {
+      type: "hot_take",
+      icon: "🔥",
+      label: "Hot Take",
+      description: "Your opinion or interpretation",
+      color: "#e8450a",
+    },
   ];
 
   // Quote picker state — shown when user drops a quote node

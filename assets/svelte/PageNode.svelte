@@ -1,6 +1,7 @@
 <script>
   import { Handle, Position } from "@xyflow/svelte";
   import { getContext } from "svelte";
+  import ReactionBar from "./ReactionBar.svelte";
 
   let { data, selected } = $props();
 
@@ -47,6 +48,12 @@
   <Handle type="source" position={Position.Bottom} id="b" class="node-handle" />
   <Handle type="source" position={Position.Left}   id="l" class="node-handle" />
 
+  <button
+    class="delete-btn"
+    title="Delete node"
+    onclick={(e) => { e.stopPropagation(); data?.onDelete?.(); }}
+  >✕</button>
+
   <div class="thumb-wrap">
     <canvas bind:this={canvas} class="thumb-canvas" class:visible={rendered}></canvas>
     {#if !rendered}
@@ -69,6 +76,7 @@
       <span class="node-label">{data.label}</span>
     {/if}
   </div>
+  <ReactionBar reactions={data?.reactions ?? []} onReact={data?.onReact} />
 </div>
 
 <style>
@@ -149,10 +157,40 @@
     opacity: 0.4;
   }
 
+  .delete-btn {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    z-index: 20;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-paper, #f4efe3);
+    border: 1px solid var(--color-ink-soft, #5c5750);
+    border-radius: 2px;
+    font-size: 10px;
+    color: var(--color-ink-soft, #5c5750);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .page-node.show-handles .delete-btn { opacity: 1; }
+
+  .delete-btn:hover {
+    background: var(--color-terracotta, #b8512e);
+    border-color: var(--color-terracotta, #b8512e);
+    color: #fff;
+  }
+
   .expand-btn {
     position: absolute;
     top: 5px;
-    right: 5px;
+    right: 28px;
     background: var(--color-paper, #f4efe3);
     border: 1px solid var(--color-ink-soft, #5c5750);
     border-radius: 2px;

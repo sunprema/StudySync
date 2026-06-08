@@ -103,7 +103,7 @@ defmodule Studysync.Board.Node do
       allow_nil? false
       public? true
       default :page
-      constraints one_of: [:page, :youtube, :text, :quote, :link]
+      constraints one_of: [:page, :youtube, :text, :quote, :link, :hot_take]
     end
 
     attribute :page_number, :integer do

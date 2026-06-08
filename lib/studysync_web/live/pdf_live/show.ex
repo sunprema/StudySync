@@ -1231,7 +1231,9 @@ defmodule StudysyncWeb.PdfLive.Show do
       position_y: 80.0 + :rand.uniform() * 200
     }
 
-    case Studysync.Board.Node |> Ash.Changeset.for_create(:create, input, actor: actor) |> Ash.create(actor: actor) do
+    case Studysync.Board.Node
+         |> Ash.Changeset.for_create(:create, input, actor: actor)
+         |> Ash.create(actor: actor) do
       {:ok, _} ->
         {:noreply, put_flash(socket, :info, "Page #{page} added to board")}
 

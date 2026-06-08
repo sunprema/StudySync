@@ -80,6 +80,37 @@ defmodule Studysync.Board.PubSub do
     end)
   end
 
+  def broadcast_reaction_toggled(resource_id) when is_binary(resource_id) do
+    span(topic(resource_id), :reaction_toggled, fn ->
+      Phoenix.PubSub.broadcast_from!(
+        @pubsub,
+        self(),
+        topic(resource_id),
+        {:reaction_toggled, %{resource_id: resource_id}}
+      )
+    end)
+  end
+
+  def broadcast_cursor_moved(resource_id, user_id, email, x, y) do
+    Phoenix.PubSub.broadcast_from!(
+      @pubsub,
+      self(),
+      topic(resource_id),
+      {:cursor_moved, %{user_id: user_id, email: email, x: x, y: y, resource_id: resource_id}}
+    )
+  end
+
+  def broadcast_edge_updated(resource_id) when is_binary(resource_id) do
+    span(topic(resource_id), :edge_updated, fn ->
+      Phoenix.PubSub.broadcast_from!(
+        @pubsub,
+        self(),
+        topic(resource_id),
+        {:edge_updated, %{resource_id: resource_id}}
+      )
+    end)
+  end
+
   def topic(resource_id) when is_binary(resource_id), do: "resource:#{resource_id}:board"
 
   defp span(topic, event, fun) do
