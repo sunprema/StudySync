@@ -823,6 +823,33 @@ body {
 .lp-timer-bar > span { position: absolute; inset: 0; width: 55%; background: var(--color-terracotta); }
 .lp-pomo { font-family: var(--font-serif); font-style: italic; font-size: 20px; color: var(--color-terracotta); }
 
+/* lens / collective-insight card (amber — not theme-flipped, like the highlight tints) */
+.lp-lens { margin-top: 16px; padding: 12px 14px; background: oklch(0.95 0.045 85); border: 1px solid oklch(0.85 0.075 80); border-left: 3px solid oklch(0.70 0.13 70); }
+.lp-lens-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.lp-lens-badge { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.2px; color: oklch(0.48 0.12 65); font-weight: 600; }
+.lp-lens-meta { font-family: var(--font-mono); font-size: 9px; letter-spacing: 1px; color: var(--ds-muted); }
+.lp-lens-body { font-family: var(--font-serif); font-size: 13px; line-height: 1.55; color: var(--ds-ink); }
+.lp-lens-body em { font-style: italic; color: oklch(0.45 0.13 60); }
+.lp-lens-by { margin-top: 8px; font-family: var(--font-mono); font-size: 8px; letter-spacing: 1px; color: var(--ds-muted); }
+
+/* ── More features grid ──────────────────────────────────────────────────── */
+
+.lp-more { border-top: 1px solid var(--ds-line); padding-top: 64px; }
+.lp-more-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid var(--ds-line);
+  border-bottom: 1px solid var(--ds-line);
+}
+.lp-more-card { padding: 28px 24px 32px; border-right: 1px solid var(--ds-line); }
+.lp-more-card:last-child { border-right: none; }
+.lp-more-n {
+  font-family: var(--font-serif); font-style: italic; font-size: 34px;
+  color: var(--color-terracotta); line-height: 1; display: block; margin-bottom: 14px;
+}
+.lp-more-card h4 { font-family: var(--font-serif); font-size: 19px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.3px; }
+.lp-more-card p { font-family: var(--font-serif); font-size: 13.5px; line-height: 1.55; color: var(--ds-ink-2); margin: 0; }
+
 /* ── Quotes ──────────────────────────────────────────────────────────────── */
 
 .lp-quotes {
@@ -929,6 +956,9 @@ body {
   .lp-step:nth-child(2n) { border-right: none; }
   .lp-feature { grid-template-columns: 1fr; gap: 36px; padding: 56px 0; }
   .lp-feature-flip { direction: ltr; }
+  .lp-more-grid { grid-template-columns: 1fr 1fr; }
+  .lp-more-card { border-bottom: 1px solid var(--ds-line); }
+  .lp-more-card:nth-child(2n) { border-right: none; }
   .lp-h2, .lp-cta-h { font-size: 44px; }
   .lp-quotes-grid { grid-template-columns: 1fr; }
   .lp-footer { grid-template-columns: 1fr 1fr; padding: 36px 32px; }
