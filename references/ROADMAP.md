@@ -404,24 +404,26 @@ A member can start a timed reading sprint with a page range. Other members can j
 
 ## Slice 22 — Collaborative Concept Map Board
 
-A per-resource concept map board where workspace members can create idea nodes, connect them with edges, and see each other's changes in real time. Serves as the "shared whiteboard" feature marketed on the landing page. SvelteFlow (`@xyflow/svelte`) drives the interactive canvas; Phoenix PubSub syncs state across sessions. Accessed via a "Board ↗" link in the PDF reader header; lives at its own route.
+A per-resource concept map board where workspace members map relationships between pages of the PDF. Each node renders a live thumbnail of a specific page; users draw edges between nodes to capture conceptual connections. SvelteFlow (`@xyflow/svelte`) drives the interactive canvas; Phoenix PubSub syncs state across sessions. Accessed via a "Board ↗" link in the PDF reader header; lives at its own route.
+
+Pages can be added to the board from the PDF reader (the `+ Board` button in the reader header adds the current focal page) or from the board itself (the "Add page" form). The same page can appear multiple times in different positions.
 
 Any active workspace member can create, move, and delete any node or edge — fully collaborative by design.
 
 - [x] **22.1** `@xyflow/svelte` npm package installed.
 - [x] **22.2** `Studysync.Board` Ash domain (`lib/studysync/board.ex`); registered in `config/config.exs`.
-- [x] **22.3** `Studysync.Board.Node` Ash resource — `board_nodes` table; `:create`, `:move` (update), `:delete`, `:read` actions; membership policy for all actions.
+- [x] **22.3** `Studysync.Board.Node` Ash resource — `board_nodes` table; `:create`, `:move` (update), `:delete`, `:read` actions; membership policy for all actions. `page_number` (required integer ≥ 1) is the anchor; `label` is optional user title.
 - [x] **22.4** `Studysync.Board.Edge` Ash resource — `board_edges` table; `:create`, `:delete`, `:read` actions; `[:source_id, :target_id]` unique identity; cascade-delete when source/target node deleted.
 - [x] **22.5** `Studysync.Board.PubSub` — topic `"resource:#{id}:board"`; broadcasts `node_created/moved/deleted` and `edge_created/deleted`; same telemetry span pattern as Annotations.PubSub.
 - [x] **22.6** Change modules for all five broadcast events (under `board/node/changes/` and `board/edge/changes/`).
-- [x] **22.7** Migration: `mix ash.codegen board_resources` → `priv/repo/migrations/20260607052700_board_resources.exs`.
-- [x] **22.8** `ConceptMapBoard.svelte` — SvelteFlow canvas with `+ New node` toolbar form, drag-to-move (debounced `pushEvent("node_moved", ...)`), connect-handles for edges, Delete/Backspace to remove selected items. Direction 01 palette applied via `--xy-*` CSS variables.
-- [x] **22.9** `StudysyncWeb.BoardLive.Show` LiveView — mount loads nodes/edges, subscribes to Board.PubSub, tracks presence. Handles all five Svelte events + five PubSub messages. Props: `board_nodes/1` and `board_edges/1` transform helpers.
+- [x] **22.7** Migrations: `board_resources` (creates tables) + `board_page_nodes` (adds `page_number`, makes `label` nullable, drops `color`).
+- [x] **22.8** `ConceptMapBoard.svelte` — SvelteFlow canvas with custom `pageNode` type; loads the PDF via PDF.js and renders each page as a ~180px thumbnail inside the node; expand button opens a full-page modal; "Add page" form validates against `total_pages`; Direction 01 palette via `--xy-*` CSS variables. `PageNode.svelte` handles the per-node thumbnail rendering via shared PDF document context.
+- [x] **22.9** `StudysyncWeb.BoardLive.Show` LiveView — mount loads nodes/edges + assigns `file_url` and `total_pages`; subscribes to Board.PubSub; tracks presence. Handles all five Svelte events + five PubSub messages.
 - [x] **22.10** Route: `live "/workspaces/:workspace_id/library/:id/board", BoardLive.Show, :show` added to the authenticated session block.
-- [x] **22.11** `"Board ↗"` link added to the PDF reader header in `PdfLive.Show`.
+- [x] **22.11** `"+ Board"` button and `"Board ↗"` link added to the PDF reader header in `PdfLive.Show`; the button fires `add_page_to_board` which creates a node for `@focal_page` directly in LiveView.
 - [x] **22.12** CLAUDE.md §4.3 updated with `ConceptMapBoard.svelte` contract (props + events).
-- [x] **22.13** Tests: 9 domain tests (`board_test.exs`) + 7 LiveView tests (`board_live/show_test.exs`). All 232 suite tests green.
-- [ ] **22.14** Manual verification: two browser sessions — create a node in one, confirm it appears in the other within ~500ms; drag a node and confirm DB position updates; connect nodes; delete node confirms cascade to edges.
+- [ ] **22.13** Tests updated: `board_test.exs` and `board_live/show_test.exs` updated for `page_number`-based node creation.
+- [ ] **22.14** Manual verification: add page from reader; add page from board form; drag node; connect two nodes; expand thumbnail to full-page modal; delete node; confirm real-time sync in two sessions.
 
 ---
 

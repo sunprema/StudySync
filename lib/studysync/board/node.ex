@@ -27,12 +27,18 @@ defmodule Studysync.Board.Node do
 
     create :create do
       argument :resource_id, :uuid, allow_nil?: false
-      argument :label, :string, allow_nil?: false
+      argument :node_type, :atom, allow_nil?: false
+      argument :page_number, :integer, allow_nil?: true
+      argument :label, :string, allow_nil?: true
+      argument :content, :map, allow_nil?: true
       argument :position_x, :float, allow_nil?: false
       argument :position_y, :float, allow_nil?: false
 
       change set_attribute(:resource_id, arg(:resource_id))
+      change set_attribute(:node_type, arg(:node_type))
+      change set_attribute(:page_number, arg(:page_number))
       change set_attribute(:label, arg(:label))
+      change set_attribute(:content, arg(:content))
       change set_attribute(:position_x, arg(:position_x))
       change set_attribute(:position_y, arg(:position_y))
       change relate_actor(:user)
@@ -93,10 +99,28 @@ defmodule Studysync.Board.Node do
   attributes do
     uuid_primary_key :id
 
-    attribute :label, :string do
+    attribute :node_type, :atom do
       allow_nil? false
       public? true
+      default :page
+      constraints one_of: [:page, :youtube, :text, :quote, :link]
+    end
+
+    attribute :page_number, :integer do
+      allow_nil? true
+      public? true
+      constraints min: 1
+    end
+
+    attribute :label, :string do
+      allow_nil? true
+      public? true
       constraints max_length: 200
+    end
+
+    attribute :content, :map do
+      allow_nil? true
+      public? true
     end
 
     attribute :position_x, :float do
@@ -107,12 +131,6 @@ defmodule Studysync.Board.Node do
     attribute :position_y, :float do
       allow_nil? false
       public? true
-    end
-
-    attribute :color, :string do
-      allow_nil? true
-      public? true
-      default "default"
     end
 
     create_timestamp :inserted_at

@@ -18,7 +18,7 @@ defmodule Studysync.Board do
 
       define :create_node,
         action: :create,
-        args: [:resource_id, :label, :position_x, :position_y]
+        args: [:resource_id, :node_type, :position_x, :position_y]
 
       define :move_node, action: :move, args: [:position_x, :position_y]
       define :delete_node, action: :delete

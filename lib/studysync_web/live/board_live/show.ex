@@ -1,6 +1,7 @@
 defmodule StudysyncWeb.BoardLive.Show do
   use StudysyncWeb, :live_view
 
+  alias Studysync.Annotations
   alias Studysync.Board
   alias Studysync.Board.PubSub, as: BoardPubSub
   alias Studysync.Library
@@ -19,6 +20,7 @@ defmodule StudysyncWeb.BoardLive.Show do
       when not is_nil(resource) and resource.workspace_id == workspace_id ->
         nodes = load_nodes(resource.id, actor)
         edges = load_edges(resource.id, actor)
+        annotations = Annotations.list_annotations_for_resource(resource.id, actor: actor)
         is_admin? = Workspaces.actor_admin?(workspace_id, actor)
 
         if connected?(socket) do
@@ -39,9 +41,11 @@ defmodule StudysyncWeb.BoardLive.Show do
           socket
           |> assign(:resource, resource)
           |> assign(:workspace_id, workspace_id)
+          |> assign(:file_url, ~p"/resources/#{resource.id}/file")
           |> assign(:page_title, resource.title <> " · Board")
           |> assign(:nodes, nodes)
           |> assign(:edges, edges)
+          |> assign(:annotations, annotations)
           |> assign(:is_admin?, is_admin?)
           |> assign(:here_now, here_now)
 
@@ -86,7 +90,12 @@ defmodule StudysyncWeb.BoardLive.Show do
             %{
               nodes: board_nodes(@nodes),
               edges: board_edges(@edges),
-              current_user_id: @current_user.id
+              current_user_id: @current_user.id,
+              file_url: @file_url,
+              total_pages: @resource.page_count,
+              annotations: board_annotations(@annotations),
+              workspace_id: @workspace_id,
+              resource_id: @resource.id
             }
           }
           socket={@socket}
@@ -100,17 +109,29 @@ defmodule StudysyncWeb.BoardLive.Show do
 
   def handle_event(
         "node_created",
-        %{"label" => label, "position_x" => px, "position_y" => py},
+        %{"node_type" => node_type, "position_x" => px, "position_y" => py} = params,
         socket
       ) do
     actor = socket.assigns.current_user
 
-    case Board.create_node(socket.assigns.resource.id, label, px, py, actor: actor) do
-      {:ok, _node} ->
-        {:noreply, reload_board(socket)}
+    input = %{
+      resource_id: socket.assigns.resource.id,
+      node_type: String.to_existing_atom(node_type),
+      position_x: px,
+      position_y: py,
+      page_number: Map.get(params, "page_number"),
+      content: Map.get(params, "content"),
+      label: Map.get(params, "label")
+    }
 
-      {:error, _} ->
-        {:noreply, socket}
+    result =
+      Studysync.Board.Node
+      |> Ash.Changeset.for_create(:create, input, actor: actor)
+      |> Ash.create(actor: actor)
+
+    case result do
+      {:ok, _node} -> {:noreply, reload_board(socket)}
+      {:error, _} -> {:noreply, socket}
     end
   end
 
@@ -152,11 +173,8 @@ defmodule StudysyncWeb.BoardLive.Show do
     actor = socket.assigns.current_user
 
     case Board.create_edge(socket.assigns.resource.id, source_id, target_id, actor: actor) do
-      {:ok, _edge} ->
-        {:noreply, reload_board(socket)}
-
-      {:error, _} ->
-        {:noreply, socket}
+      {:ok, _edge} -> {:noreply, reload_board(socket)}
+      {:error, _} -> {:noreply, socket}
     end
   end
 
@@ -227,10 +245,12 @@ defmodule StudysyncWeb.BoardLive.Show do
     Enum.map(nodes, fn n ->
       %{
         id: n.id,
+        node_type: to_string(n.node_type),
+        page_number: n.page_number,
         label: n.label,
+        content: n.content,
         position_x: n.position_x,
         position_y: n.position_y,
-        color: n.color || "default",
         user_id: n.user_id
       }
     end)
@@ -243,6 +263,17 @@ defmodule StudysyncWeb.BoardLive.Show do
         source_id: e.source_id,
         target_id: e.target_id,
         label: e.label
+      }
+    end)
+  end
+
+  defp board_annotations(annotations) do
+    Enum.map(annotations, fn a ->
+      %{
+        id: a.id,
+        page_number: a.page_number,
+        text: a.text,
+        type: to_string(a.type)
       }
     end)
   end

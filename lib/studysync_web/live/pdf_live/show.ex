@@ -106,6 +106,15 @@ defmodule StudysyncWeb.PdfLive.Show do
             socket
           end
 
+        # When opened via ?page=N (e.g. from the board's "Open in Reader" link),
+        # scroll the canvas to that page after mount.
+        socket =
+          if is_nil(initial_active_id) and initial_focal_page > 1 do
+            push_event(socket, "scroll_to_page", %{page: initial_focal_page})
+          else
+            socket
+          end
+
         {:ok, socket}
 
       _ ->
@@ -246,6 +255,13 @@ defmodule StudysyncWeb.PdfLive.Show do
           <div class="flex items-center gap-4 shrink-0">
             <.reader_presence readers={@readers_here} />
             <span class="mono-tag num"><span class="num">{@resource.page_count}</span> pages</span>
+            <button
+              phx-click="add_page_to_board"
+              class="mono-tag hover:text-terracotta transition-colors"
+              title={"Add page #{@focal_page} to board"}
+            >
+              + Board
+            </button>
             <.link
               navigate={~p"/workspaces/#{@workspace_id}/library/#{@resource.id}/board"}
               class="mono-tag hover:text-terracotta transition-colors"
@@ -1200,6 +1216,28 @@ defmodule StudysyncWeb.PdfLive.Show do
      socket
      |> assign(:compare_notes, nil)
      |> assign(:active_sprint, nil)}
+  end
+
+  def handle_event("add_page_to_board", _params, socket) do
+    actor = socket.assigns.current_user
+    resource = socket.assigns.resource
+    page = socket.assigns.focal_page
+
+    input = %{
+      resource_id: resource.id,
+      node_type: :page,
+      page_number: page,
+      position_x: 80.0 + :rand.uniform() * 300,
+      position_y: 80.0 + :rand.uniform() * 200
+    }
+
+    case Studysync.Board.Node |> Ash.Changeset.for_create(:create, input, actor: actor) |> Ash.create(actor: actor) do
+      {:ok, _} ->
+        {:noreply, put_flash(socket, :info, "Page #{page} added to board")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not add page to board")}
+    end
   end
 
   # PubSub: a peer just created an annotation on this resource. Refetch so

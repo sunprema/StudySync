@@ -92,6 +92,8 @@
   let firstPageSize = $state(null);
   // Floating selection menu — { x, y, text, page, rect } or null.
   let selectionMenu = $state(null);
+  // Local (client-only) yellow highlights — [{ id, page, rect }]. Not persisted.
+  let localHighlights = $state([]);
   // Milestone popover — { x, y, milestone_id } or null. Anchored next to the
   // marker the user clicked; shows X/N readers + avatar cluster + stamp button.
   let milestonePopover = $state(null);
@@ -607,6 +609,7 @@
 
       // Selection menu: pick annotation type by letter.
       if (selectionMenu) {
+        if (e.key === "h" || e.key === "H") { e.preventDefault(); commitHighlight(null); return; }
         if (e.key === "c" || e.key === "C") { e.preventDefault(); commitSelection(null, "comment"); return; }
         if (e.key === "q" || e.key === "Q") { e.preventDefault(); commitSelection(null, "question"); return; }
         if (e.key === "p" || e.key === "P") { e.preventDefault(); commitSelection(null, "puzzle"); return; }
@@ -664,59 +667,75 @@
 
   // Watch the document's selection so we can show the floating "Add Comment"
   // button whenever the user has a non-empty selection inside one of our pages.
+  // Debounced 350ms so the menu only appears after the user finishes selecting.
   $effect(() => {
     if (!scrollEl) return;
 
+    let debounceTimer = null;
+
     const handler = () => {
+      clearTimeout(debounceTimer);
+
       const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) {
+      if (!sel || sel.rangeCount === 0 || sel.toString().trim() === "") {
         selectionMenu = null;
         return;
       }
 
-      const text = sel.toString();
-      if (text.trim() === "") {
-        selectionMenu = null;
-        return;
-      }
+      debounceTimer = setTimeout(() => {
+        const sel2 = window.getSelection();
+        if (!sel2 || sel2.rangeCount === 0) {
+          selectionMenu = null;
+          return;
+        }
 
-      const range = sel.getRangeAt(0);
-      const anchor =
-        range.startContainer.nodeType === Node.TEXT_NODE
-          ? range.startContainer.parentElement
-          : range.startContainer;
-      const pageEl = anchor?.closest?.("[data-page-num]");
-      if (!pageEl || !scrollEl.contains(pageEl)) {
-        selectionMenu = null;
-        return;
-      }
+        const text = sel2.toString();
+        if (text.trim() === "") {
+          selectionMenu = null;
+          return;
+        }
 
-      const rangeRect = range.getBoundingClientRect();
-      if (rangeRect.width === 0 || rangeRect.height === 0) {
-        selectionMenu = null;
-        return;
-      }
+        const range = sel2.getRangeAt(0);
+        const anchor =
+          range.startContainer.nodeType === Node.TEXT_NODE
+            ? range.startContainer.parentElement
+            : range.startContainer;
+        const pageEl = anchor?.closest?.("[data-page-num]");
+        if (!pageEl || !scrollEl.contains(pageEl)) {
+          selectionMenu = null;
+          return;
+        }
 
-      const pageRect = pageEl.getBoundingClientRect();
+        const rangeRect = range.getBoundingClientRect();
+        if (rangeRect.width === 0 || rangeRect.height === 0) {
+          selectionMenu = null;
+          return;
+        }
 
-      selectionMenu = {
-        // Position fixed against the viewport so the menu floats with the
-        // selection regardless of scroll position.
-        x: rangeRect.right + 8,
-        y: rangeRect.top,
-        text,
-        page: Number(pageEl.dataset.pageNum),
-        rect: {
-          x: (rangeRect.left - pageRect.left) / pageRect.width,
-          y: (rangeRect.top - pageRect.top) / pageRect.height,
-          width: rangeRect.width / pageRect.width,
-          height: rangeRect.height / pageRect.height,
-        },
-      };
+        const pageRect = pageEl.getBoundingClientRect();
+
+        selectionMenu = {
+          // Position fixed against the viewport so the menu floats with the
+          // selection regardless of scroll position.
+          x: rangeRect.right + 8,
+          y: rangeRect.top,
+          text,
+          page: Number(pageEl.dataset.pageNum),
+          rect: {
+            x: (rangeRect.left - pageRect.left) / pageRect.width,
+            y: (rangeRect.top - pageRect.top) / pageRect.height,
+            width: rangeRect.width / pageRect.width,
+            height: rangeRect.height / pageRect.height,
+          },
+        };
+      }, 350);
     };
 
     document.addEventListener("selectionchange", handler);
-    return () => document.removeEventListener("selectionchange", handler);
+    return () => {
+      document.removeEventListener("selectionchange", handler);
+      clearTimeout(debounceTimer);
+    };
   });
 
   // Slice 15.1/15.2 — push the current visible-page range to LV.
@@ -931,6 +950,19 @@
       rect: selectionMenu.rect,
       type,
     });
+
+    window.getSelection()?.removeAllRanges();
+    selectionMenu = null;
+  }
+
+  function commitHighlight(e) {
+    e?.preventDefault?.();
+    if (!selectionMenu) return;
+
+    localHighlights = [
+      ...localHighlights,
+      { id: crypto.randomUUID(), page: selectionMenu.page, rect: selectionMenu.rect },
+    ];
 
     window.getSelection()?.removeAllRanges();
     selectionMenu = null;
@@ -1358,6 +1390,15 @@
               style:height="{h.height * 100}%"
             ></div>
           {/each}
+          {#each localHighlights.filter((h) => h.page === p.pageNum) as h (h.id)}
+            <div
+              class="local-highlight"
+              style:left="{h.rect.x * 100}%"
+              style:top="{h.rect.y * 100}%"
+              style:width="{h.rect.width * 100}%"
+              style:height="{h.rect.height * 100}%"
+            ></div>
+          {/each}
         </div>
 
         <div class="textLayer" bind:this={p.textLayer}></div>
@@ -1512,6 +1553,13 @@
       aria-label="Annotation actions"
     >
       <button
+        class="selection-btn selection-btn-highlight"
+        data-type="highlight"
+        onmousedown={(e) => commitHighlight(e)}
+      >
+        <span>Highlight</span><kbd>H</kbd>
+      </button>
+      <button
         class="selection-btn"
         data-type="comment"
         onmousedown={(e) => commitSelection(e, "comment")}
@@ -1604,6 +1652,7 @@
           <section class="shortcuts-group">
             <h3 class="shortcuts-group-label">Annotations</h3>
             <ul class="shortcuts-list">
+              <li><kbd>H</kbd><span class="shortcut-desc">Highlight selection</span></li>
               <li><kbd>C</kbd><span class="shortcut-desc">Add comment (on selection)</span></li>
               <li><kbd>Q</kbd><span class="shortcut-desc">Ask question (on selection)</span></li>
               <li><kbd>P</kbd><span class="shortcut-desc">Create puzzle (on selection)</span></li>
@@ -1852,6 +1901,13 @@
   .annotation-highlight.type-ai {
     background: color-mix(in srgb, #ecdfa8 35%, transparent);
     border-bottom-color: #c9b86a;
+  }
+
+  .local-highlight {
+    position: absolute;
+    pointer-events: none;
+    background: color-mix(in srgb, #f5e030 55%, transparent);
+    border-radius: 1px;
   }
 
   /* Text layer: PDF.js positions transparent text spans over the canvas.
@@ -2264,6 +2320,12 @@
   .selection-btn:hover {
     color: var(--color-terracotta);
     background: var(--color-paper-2);
+  }
+
+  /* Highlight button — yellow tint on hover to preview the highlight colour. */
+  .selection-btn-highlight:hover {
+    color: var(--color-ink);
+    background: color-mix(in srgb, #f5e030 35%, transparent);
   }
 
   /* Slice 11 — AI option sits between the annotation types and the admin

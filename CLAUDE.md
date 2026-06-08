@@ -100,21 +100,25 @@ If you need a new prop or event, **add it to this contract in the same PR** and 
 
 ---
 
-**`ConceptMapBoard.svelte`** (Slice 22) — concept map board at `/workspaces/:wid/library/:id/board`. Justified as a second Svelte component because it is a completely separate screen, not the PDF canvas.
+**`ConceptMapBoard.svelte`** (Slice 22) — page-reference concept map at `/workspaces/:wid/library/:id/board`. Each node is a PDF page rendered as a thumbnail; users draw edges between pages to map relationships. Justified as a second Svelte component because it is a completely separate screen, not the PDF canvas.
 
 **Props (LiveView → Svelte):**
 
-- `nodes[]` — `[{ id, label, position_x, position_y, color, user_id }]`
-- `edges[]` — `[{ id, source_id, target_id, label }]`
+- `nodes[]` — `[{ id, page_number, label, position_x, position_y, user_id }]` — `label` is optional user-defined title overlaid on the page thumbnail
+- `edges[]` — `[{ id, source_id, target_id }]`
 - `current_user_id` — UUID of the signed-in actor
+- `file_url` — auth-gated URL for the PDF; the board loads it via PDF.js to render page thumbnails (same URL format as `PdfCanvasRenderer`)
+- `total_pages` — page count from the persisted resource; used for page number validation in the add-node form
 
 **Events (Svelte → LiveView):**
 
-- `node_created` → `{ label, position_x, position_y }` — new node placed on canvas
-- `node_moved` → `{ id, position_x, position_y }` — node drag ended (debounced; LiveView updates DB but does NOT reload assigns for the originator — Svelte already has the correct position)
+- `node_created` → `{ page_number, position_x, position_y }` — new page node placed on canvas (from the board's "Add page" form)
+- `node_moved` → `{ id, position_x, position_y }` — node drag ended; LiveView updates DB but does NOT reload assigns for the originator — Svelte already has the correct position
 - `node_deleted` → `{ id }` — node removed (cascades to its edges via DB FK)
 - `edge_created` → `{ source_id, target_id }` — connection drawn between two nodes
 - `edge_deleted` → `{ id }` — edge removed
+
+Nodes can also be created from the PDF reader via the `+ Board` button in the reader header; that button dispatches `add_page_to_board` directly in `PdfLive.Show` (no Svelte event — it goes straight through Ash from the LiveView).
 
 PubSub topic: `"resource:#{id}:board"` (separate from `:annotations` and `:chat` topics).
 
